@@ -20,6 +20,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'lidar_obj_detection_node_v1 = lidar_obj_detection.lidar_sub:main',
+            'lidar_obj_detection_node_v2 = lidar_obj_detection.lidar_subscriber_salma:main'
         ],
     },
 )
