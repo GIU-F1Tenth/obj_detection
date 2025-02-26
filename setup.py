@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'lidar_obj_detection'
+package_name = 'obj_detection'
 
 setup(
     name=package_name,
