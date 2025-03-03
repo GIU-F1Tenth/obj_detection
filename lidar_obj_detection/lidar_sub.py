@@ -63,73 +63,68 @@ class LidarProcessor(Node):
             # ---------------------------
 
             # Step 1: Filter by the LiDAR's 270° FOV (ORIGINAL)
-            fov_min = -np.deg2rad(135)  # -135° (leftmost angle) (ORIGINAL)
-            fov_max = np.deg2rad(135)   # +135° (rightmost angle) (ORIGINAL)
-            fov_filter = (angles >= -np.deg2rad(135)) & (angles <= np.deg2rad(135))
-            ranges = ranges[fov_filter]
-            angles = angles[fov_filter]
-
             # Original Salma's implementation:
+            # fov_min = -np.deg2rad(135)  # -135° (leftmost angle) (ORIGINAL)
+            # fov_max = np.deg2rad(135)   # +135° (rightmost angle) (ORIGINAL)
             # fov_filtered_indices = np.where((angles >= fov_min) & (angles <= fov_max))[0]
             # fov_filtered_ranges = ranges[fov_filtered_indices]
             # fov_filtered_angles = angles[fov_filtered_indices]
+            fov_filter = (angles >= -np.deg2rad(135)) & (angles <= np.deg2rad(135))
+            ranges = ranges[fov_filter]
+            angles = angles[fov_filter]
 
             # ---------------------------
             # Optimized Cartesian Conversion 🤖 (Salma + Hatem)
             # ---------------------------
             
             # Step 2: Convert filtered polar coordinates to Cartesian coordinates (ORIGINAL)
-            x = ranges * np.cos(angles)  # Forward/backward (x-axis) (ORIGINAL)
-            y = ranges * np.sin(angles)  # Left/right (y-axis) (ORIGINAL)
-            points = np.column_stack((x, y))
-
             # Original Salma's implementation:
             # x = fov_filtered_ranges * np.cos(fov_filtered_angles)
             # y = fov_filtered_ranges * np.sin(fov_filtered_angles)
             # points = np.column_stack((x, y))
+            x = ranges * np.cos(angles)  # Forward/backward (x-axis) (ORIGINAL)
+            y = ranges * np.sin(angles)  # Left/right (y-axis) (ORIGINAL)
+            points = np.column_stack((x, y))
 
             # ---------------------------
             # Track-Aware Filtering 🏁 (Hatem)
             # ---------------------------
             
             # Step 3: Filter by distance (e.g., within 5 meters along x and y axes) (ORIGINAL)
-            track_filter = (np.abs(y) < self.track_width/2)
-            points = points[track_filter]
-
             # Original Salma's implementation:
             # distance_threshold = 5.0  # Adjust as needed
             # distance_filtered_indices = np.where(
             #     (np.abs(x) <= distance_threshold) & (np.abs(y) <= distance_threshold)
             # )[0]
             # distance_filtered_points = points[distance_filtered_indices]
+            track_filter = (np.abs(y) < self.track_width/2)
+            points = points[track_filter]
 
             # ---------------------------
             # Collaborative Clustering 🤝 (Salma's method + Hatem's params)
             # ---------------------------
 
             # Step 4: Cluster points to detect objects (ORIGINAL)
-            clustering = DBSCAN(eps=self.cluster_eps, 
-                            min_samples=self.cluster_min_samples).fit(points)
-            labels = clustering.labels_
-
             # Original Salma's implementation:
             # clustering = DBSCAN(eps=0.2, min_samples=3).fit(distance_filtered_points)
             # labels = clustering.labels_
+            clustering = DBSCAN(eps=self.cluster_eps, 
+                            min_samples=self.cluster_min_samples).fit(points)
+            labels = clustering.labels_
 
             # ---------------------------
             # Structured Message Creation 📦 (Hatem)
             # ---------------------------
 
             # Step 5: Filter by size (e.g., ignore small clusters) (ORIGINAL)
+            # Original Salma's implementation:
+            # large_cluster_indices = [i for i, label in enumerate(labels) if label != -1 and np.sum(labels == label) > 10]
+            # large_cluster_points = distance_filtered_points[large_cluster_indices]
             obstacles = Detection3DArray()
             walls = Detection3DArray()
             obstacles.header.stamp = self.get_clock().now().to_msg()
             obstacles.header.frame_id = 'lidar_frame'
             walls.header = obstacles.header
-            
-            # Original Salma's implementation:
-            # large_cluster_indices = [i for i, label in enumerate(labels) if label != -1 and np.sum(labels == label) > 10]
-            # large_cluster_points = distance_filtered_points[large_cluster_indices]
 
             # Initialize empty lists for detections
             obstacles.detections = []
