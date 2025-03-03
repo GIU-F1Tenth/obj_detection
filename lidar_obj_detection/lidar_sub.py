@@ -16,11 +16,14 @@ class LidarProcessor(Node):
         # ---------------------------
         # Original Subscription Setup 🛠️ (Salma)
         # ---------------------------
+
+        # Subscribe to the LiDAR topic (ORIGINAL)
         self.subscription = self.create_subscription(
             LaserScan,
-            '/scan',
+            '/scan',   # Change to '/echoes' if using multi-echo (ORIGINAL)
             self.listener_callback,
             10)
+        self.subscription  # Prevent unused variable warning (ORIGINAL)
         
         # ---------------------------
         # New ROS Publishers 🚀 (Hatem)
@@ -41,9 +44,11 @@ class LidarProcessor(Node):
             # ---------------------------
             # Core Coordinate Conversion 🔄 (Salma)
             # ---------------------------
-            ranges = np.array(msg.ranges)
-            angle_min = msg.angle_min
-            angle_increment = msg.angle_increment
+
+            # Extract LiDAR data (ORIGINAL)
+            ranges = np.array(msg.ranges)  # List of distances (ORIGINAL)
+            angle_min = msg.angle_min      # Minimum angle (radians) (ORIGINAL)
+            angle_increment = msg.angle_increment  # Angle between measurements (radians) (ORIGINAL)
             angles = np.arange(angle_min, angle_min + len(ranges)*angle_increment, angle_increment)
             
             # ---------------------------
@@ -56,6 +61,10 @@ class LidarProcessor(Node):
             # ---------------------------
             # FOV Filtering Magic 🎯 (Salma)
             # ---------------------------
+
+            # Step 1: Filter by the LiDAR's 270° FOV (ORIGINAL)
+            fov_min = -np.deg2rad(135)  # -135° (leftmost angle) (ORIGINAL)
+            fov_max = np.deg2rad(135)   # +135° (rightmost angle) (ORIGINAL)
             fov_filter = (angles >= -np.deg2rad(135)) & (angles <= np.deg2rad(135))
             ranges = ranges[fov_filter]
             angles = angles[fov_filter]
@@ -63,19 +72,25 @@ class LidarProcessor(Node):
             # ---------------------------
             # Optimized Cartesian Conversion 🤖 (Salma + Hatem)
             # ---------------------------
-            x = ranges * np.cos(angles)
-            y = ranges * np.sin(angles)
+            
+            # Step 2: Convert filtered polar coordinates to Cartesian coordinates (ORIGINAL)
+            x = ranges * np.cos(angles)  # Forward/backward (x-axis) (ORIGINAL)
+            y = ranges * np.sin(angles)  # Left/right (y-axis) (ORIGINAL)
             points = np.column_stack((x, y))
 
             # ---------------------------
             # Track-Aware Filtering 🏁 (Hatem)
             # ---------------------------
+            
+            # Step 3: Filter by distance (e.g., within 5 meters along x and y axes) (ORIGINAL)
             track_filter = (np.abs(y) < self.track_width/2)
             points = points[track_filter]
 
             # ---------------------------
             # Collaborative Clustering 🤝 (Salma's method + Hatem's params)
             # ---------------------------
+
+            # Step 4: Cluster points to detect objects (ORIGINAL)
             clustering = DBSCAN(eps=self.cluster_eps, 
                             min_samples=self.cluster_min_samples).fit(points)
             labels = clustering.labels_
@@ -83,6 +98,8 @@ class LidarProcessor(Node):
             # ---------------------------
             # Structured Message Creation 📦 (Hatem)
             # ---------------------------
+
+            # Step 5: Filter by size (e.g., ignore small clusters) (ORIGINAL)
             obstacles = Detection3DArray()
             walls = Detection3DArray()
             obstacles.header.stamp = self.get_clock().now().to_msg()
@@ -126,6 +143,8 @@ class LidarProcessor(Node):
                     # ---------------------------
                     # Directional Awareness ➡️⬅️ (Salma's original concept)
                     # ---------------------------
+
+                    # Step 6: Separate objects on the sides from those in front (ORIGINAL)
                     is_front = abs(np.mean(cluster_pts[:,1])) < 1.0  # Salma's directional threshold
                     class_id = "car" if (abs(width - self.car_length) < 0.1) else "unknown"
                     
@@ -137,6 +156,8 @@ class LidarProcessor(Node):
             # ---------------------------
             # Dual Output System 📤 (Hatem's ROS + Salma's logging)
             # ---------------------------
+
+            # Log the detected objects (ORIGINAL)
             self.obstacle_pub.publish(obstacles)
             self.wall_pub.publish(walls)
             self.get_logger().info(f'Published {len(obstacles.detections)} obstacles | {len(walls.detections)} walls')
