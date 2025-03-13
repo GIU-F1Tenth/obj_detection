@@ -1,0 +1,3 @@
+[submodule "camera_obj_detection"]
+	path = camera_obj_detection
+	url = git@github.com:TheOneAndOnlyZestro/camera_object_detection.git
