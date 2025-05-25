@@ -60,7 +60,7 @@ class LidarClusterNode(Node):
 
     def publish_marker(self, x, y, size, color):
         marker = Marker()
-        marker.header.frame_id = "ego_racecar/laser"
+        marker.header.frame_id = "/laser"
         marker.header.stamp = self.get_clock().now().to_msg()
         marker.ns = "clusters"
         marker.id = self.marker_id
