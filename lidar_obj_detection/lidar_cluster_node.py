@@ -4,19 +4,26 @@ from sensor_msgs.msg import LaserScan
 from visualization_msgs.msg import Marker
 import numpy as np
 from sklearn.cluster import DBSCAN
+# from cuml.cluster import DBSCAN
 import math
 import random
 
 class LidarClusterNode(Node):
     def __init__(self):
         super().__init__('lidar_cluster_node')
+        self.declare_parameter("cluster_pub_topic", "")
+        self.declare_parameter("scan_sub_topic", "")
+
+        self.scan_topic = self.get_parameter("scan_sub_topic").get_parameter_value().string_value
+        self.cluster_topic = self.get_parameter("cluster_pub_topic").get_parameter_value().string_value
+
         self.subscription = self.create_subscription(
             LaserScan,
-            '/scan',
+            self.scan_topic,
             self.scan_callback,
             10
         )
-        self.marker_pub = self.create_publisher(Marker, '/clusters', 10)
+        self.marker_pub = self.create_publisher(Marker, self.cluster_topic, 10)
         self.marker_id = 0
 
     def scan_callback(self, msg):
@@ -50,17 +57,17 @@ class LidarClusterNode(Node):
             distance = np.linalg.norm(center)
 
             color = (0.0, 1.0, 0.0)  # green by default
-            if 0.3 < size < 1.5 and distance < 2.0:
+            if 0.2 < size < 0.55 and distance < 2.0:
                 self.get_logger().warn(">> Likely another robot nearby!")
                 color = (1.0, 0.0, 0.0)  # red if suspicious
                 self.get_logger().info(f"x: {center[0]}, y: {center[1]}")
                 self.publish_marker(center[0], center[1], size, color) # publish the marker if there is a car
-            else:
-                self.publish_marker(center[0], center[1], 0.01, color) # publish the marker if there is a car
+            # else:
+            #     self.publish_marker(center[0], center[1], 0.01, color) # publish the marker if there is a car
 
     def publish_marker(self, x, y, size, color):
         marker = Marker()
-        marker.header.frame_id = "/laser"
+        marker.header.frame_id = "laser"
         marker.header.stamp = self.get_clock().now().to_msg()
         marker.ns = "clusters"
         marker.id = self.marker_id

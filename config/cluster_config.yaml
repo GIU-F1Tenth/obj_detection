@@ -1,0 +1,5 @@
+lidar_cluster_node:
+  ros__parameters:
+    cluster_pub_topic: "/clusters"
+    scan_sub_topic: "/scan"
+    
