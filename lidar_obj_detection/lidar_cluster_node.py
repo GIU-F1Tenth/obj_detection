@@ -5,7 +5,6 @@ from visualization_msgs.msg import Marker
 import numpy as np
 from sklearn.cluster import DBSCAN
 import math
-import random
 
 class LidarClusterNode(Node):
     def __init__(self):
@@ -36,7 +35,8 @@ class LidarClusterNode(Node):
         if len(points) == 0:
             return
 
-        clustering = DBSCAN(eps=0.15, min_samples=10).fit(points)
+        # DBSCAN tuned for detecting ~12x12 cm robot
+        clustering = DBSCAN(eps=0.07, min_samples=5).fit(points)
         labels = clustering.labels_
 
         unique_labels = set(labels)
@@ -49,14 +49,17 @@ class LidarClusterNode(Node):
             center = cluster.mean(axis=0)
             distance = np.linalg.norm(center)
 
+            # Debug info
+            self.get_logger().info(f"Cluster size: {size:.2f} m, Distance: {distance:.2f} m")
+
             color = (0.0, 1.0, 0.0)  # green by default
-            if 0.3 < size < 1.5 and distance < 2.0:
+            if 0.1 < size < 0.25 and distance < 3.0:
                 self.get_logger().warn(">> Likely another robot nearby!")
-                color = (1.0, 0.0, 0.0)  # red if suspicious
-                self.get_logger().info(f"x: {center[0]}, y: {center[1]}")
-                self.publish_marker(center[0], center[1], size, color) # publish the marker if there is a car
+                self.get_logger().info(f"Position -> x: {center[0]:.2f}, y: {center[1]:.2f}")
+                color = (1.0, 0.0, 0.0)  # red
+                self.publish_marker(center[0], center[1], size, color)
             else:
-                self.publish_marker(center[0], center[1], 0.01, color) # publish the marker if there is a car
+                self.publish_marker(center[0], center[1], 0.01, color)
 
     def publish_marker(self, x, y, size, color):
         marker = Marker()
