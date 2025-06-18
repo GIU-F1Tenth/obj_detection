@@ -17,7 +17,7 @@ class LidarClusterNode(Node):
         )
         self.marker_pub = self.create_publisher(Marker, '/clusters', 10)
         self.marker_id = 0
-        self.angle_thresh = 70.0
+        self.angle_thresh = 10.0
 
     def scan_callback(self, msg):
         self.marker_id = 0  # reset marker ID for each scan
@@ -55,13 +55,14 @@ class LidarClusterNode(Node):
 
             color = (0.0, 1.0, 0.0)  # green by default
             angle = np.arctan2(center[1], center[0])
-            if 0.1 < size < 0.25 and distance < 3.0 and center[0] > 0 and abs(angle) < np.radians(self.angle_thresh):
+            if 0.18 < size < 0.25 and 1.0 < distance < 3.0 and center[0] > 0 and abs(angle) < np.radians(self.angle_thresh):
                 self.get_logger().warn(">> Likely another robot nearby!")
                 self.get_logger().info(f"Position -> x: {center[0]:.2f}, y: {center[1]:.2f}")
                 color = (1.0, 0.0, 0.0)  # red
                 self.publish_marker(center[0], center[1], size, color)
             else:
-                self.publish_marker(center[0], center[1], 0.01, color)
+                # self.publish_marker(center[0], center[1], 0.01, color)
+                pass
 
     def publish_marker(self, x, y, size, color):
         marker = Marker()
