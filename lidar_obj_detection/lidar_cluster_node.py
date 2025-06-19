@@ -17,6 +17,7 @@ class LidarClusterNode(Node):
         )
         self.marker_pub = self.create_publisher(Marker, '/clusters', 10)
         self.marker_id = 0
+        self.angle_thresh = 70.0
 
     def scan_callback(self, msg):
         self.marker_id = 0  # reset marker ID for each scan
@@ -37,6 +38,8 @@ class LidarClusterNode(Node):
 
         # DBSCAN tuned for detecting ~12x12 cm robot
         clustering = DBSCAN(eps=0.07, min_samples=5).fit(points)
+        # DBSCAN tuned for detecting ~12x12 cm robot
+        clustering = DBSCAN(eps=0.07, min_samples=5).fit(points)
         labels = clustering.labels_
 
         unique_labels = set(labels)
@@ -52,8 +55,12 @@ class LidarClusterNode(Node):
             # Debug info
             self.get_logger().info(f"Cluster size: {size:.2f} m, Distance: {distance:.2f} m")
 
+            # Debug info
+            self.get_logger().info(f"Cluster size: {size:.2f} m, Distance: {distance:.2f} m")
+
             color = (0.0, 1.0, 0.0)  # green by default
-            if 0.1 < size < 0.25 and distance < 3.0 and center[0] > 0:
+            angle = np.arctan2(center[1], center[0])
+            if 0.1 < size < 0.25 and distance < 3.0 and center[0] > 0 and abs(angle) < np.radians(self.angle_thresh):
                 self.get_logger().warn(">> Likely another robot nearby!")
                 self.get_logger().info(f"Position -> x: {center[0]:.2f}, y: {center[1]:.2f}")
                 color = (1.0, 0.0, 0.0)  # red
