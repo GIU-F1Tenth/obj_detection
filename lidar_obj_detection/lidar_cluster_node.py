@@ -53,7 +53,7 @@ class LidarClusterNode(Node):
             self.get_logger().info(f"Cluster size: {size:.2f} m, Distance: {distance:.2f} m")
 
             color = (0.0, 1.0, 0.0)  # green by default
-            if 0.1 < size < 0.25 and distance < 3.0:
+            if 0.1 < size < 0.25 and distance < 3.0 and center[0] > 0:
                 self.get_logger().warn(">> Likely another robot nearby!")
                 self.get_logger().info(f"Position -> x: {center[0]:.2f}, y: {center[1]:.2f}")
                 color = (1.0, 0.0, 0.0)  # red
@@ -63,7 +63,7 @@ class LidarClusterNode(Node):
 
     def publish_marker(self, x, y, size, color):
         marker = Marker()
-        marker.header.frame_id = "ego_racecar/laser"
+        marker.header.frame_id = "laser"
         marker.header.stamp = self.get_clock().now().to_msg()
         marker.ns = "clusters"
         marker.id = self.marker_id
