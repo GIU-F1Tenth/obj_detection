@@ -49,7 +49,7 @@ class LidarClusterNode(Node):
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
         # Parameters
-        self.map_occupancy_threshold = 50  # Occupancy value for static cells
+        self.map_occupancy_threshold = 60  # Occupancy value for static cells
         self.downsample_factor = 4
         self.outlier_diff_threshold = 0.1  # For range outlier filtering
 
@@ -103,7 +103,7 @@ class LidarClusterNode(Node):
         if self.map_data is not None and self.map_info is not None:
             # Transform points to map frame (if needed)
             points_map = np.array([
-                self.transform_point(p, "ego_racecar/laser", self.map_info.header.frame_id) 
+                self.transform_point(p, "/laser", self.map_info.header.frame_id) 
                 for p in points
             ])
             points_map = points_map[points_map != None]  # Remove failed transforms

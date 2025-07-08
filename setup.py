@@ -31,6 +31,7 @@ setup(
             'lidar_obj_detection_node_v2 = lidar_obj_detection.lidar_subscriber_salma:main',
             "lidar_cluster_exe = lidar_obj_detection.lidar_cluster_node:main",
             "lidar_obj_detection_node = lidar_obj_detection.new_object_detector:main",
+            "lidar_obj_detection_node_v3 = lidar_obj_detection.lidar_sub_modi:main",
         ],
     },
 )

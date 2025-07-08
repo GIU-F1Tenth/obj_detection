@@ -42,7 +42,7 @@ class LidarClusterNode(Node):
             return
 
         # DBSCAN tuned for detecting ~12x12 cm robot
-        clustering = DBSCAN(eps=0.07, min_samples=10).fit(points)
+        clustering = DBSCAN(eps=0.07, min_samples=5).fit(points)
         labels = clustering.labels_
 
         unique_labels = set(labels)
