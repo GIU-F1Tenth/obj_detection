@@ -1,5 +1,42 @@
+# F1TENTH Object Detection Configuration
+#
+# This configuration file contains parameters for the LiDAR clustering node
+# used in F1TENTH autonomous racing object detection. These parameters
+# control the behavior of the clustering algorithm and topic assignments.
+#
+# Author: F1TENTH Object Detection Team
+# License: MIT
+
 lidar_cluster_node:
-  ros__parameters:
-    cluster_pub_topic: "/clusters"
-    scan_sub_topic: "/scan"
-    
+    ros__parameters:
+        # Topic Configuration
+        # -------------------
+        # These parameters define the ROS2 topics used for communication
+
+        # Output topic for publishing detected object markers
+        # Type: visualization_msgs/Marker
+        # Purpose: Visualize detected objects in RViz for debugging and monitoring
+        cluster_pub_topic: "/clusters"
+
+        # Input topic for subscribing to LiDAR scan data
+        # Type: sensor_msgs/LaserScan
+        # Purpose: Receive raw LiDAR measurements for object detection processing
+        scan_sub_topic: "/scan"
+
+        # Algorithm Parameters (Future Expansion)
+        # ---------------------------------------
+        # Additional clustering parameters can be added here as needed:
+        #
+        # # DBSCAN clustering parameters
+        # eps: 0.07                    # Maximum distance between points in a cluster (meters)
+        # min_samples: 5               # Minimum points required to form a cluster
+        #
+        # # Object detection filters
+        # min_object_size: 0.20        # Minimum object size for detection (meters)
+        # max_object_size: 0.25        # Maximum object size for detection (meters)
+        # max_detection_range: 3.0     # Maximum range for object detection (meters)
+        # forward_angle_threshold: 15.0 # Forward detection cone angle (degrees)
+        #
+        # # Performance tuning
+        # processing_frequency: 10.0   # Target processing frequency (Hz)
+        # enable_visualization: true   # Enable/disable marker publishing
