@@ -11,14 +11,6 @@ numpy>=1.20.0
 
 # Machine learning and clustering algorithms
 scikit-learn>=1.0.0          # DBSCAN clustering algorithm
-hdbscan>=0.8.28              # Hierarchical density-based clustering (optional, for advanced features)
-
-# Computer vision and image processing (for utility scripts)
-opencv-python>=4.5.0         # Computer vision library
-ultralytics>=8.0.0           # YOLO object detection (for utility examples)
-
-# Camera interfaces (for utility scripts)
-pyrealsense2>=2.50.0         # Intel RealSense camera support (optional)
 
 # Data visualization and analysis (for development and debugging)
 matplotlib>=3.3.0            # Plotting and visualization
