@@ -1,0 +1,122 @@
+# LiDAR Object Detection Node Configuration
+# This file contains all configurable parameters for the advanced LiDAR object detection system
+
+lidar_object_detection_node:
+    ros__parameters:
+        # =============================================================================
+        # LIDAR FILTERING PARAMETERS
+        # =============================================================================
+        filter:
+            # Range filtering
+            min_range: 0.1 # Minimum valid LiDAR range (meters)
+            max_range: 10.0 # Maximum detection range (meters)
+
+            # Angular filtering
+            min_angle: -3.14159 # Minimum scan angle (radians, -π)
+            max_angle: 3.14159 # Maximum scan angle (radians, +π)
+
+            # Noise filtering
+            noise_filter_window: 5 # Moving average window size for noise reduction
+            outlier_threshold: 2.0 # Standard deviations for outlier removal
+
+            # Intensity filtering (if available)
+            intensity_threshold: 100.0 # Minimum intensity for valid points
+
+        # =============================================================================
+        # OBJECT DETECTION PARAMETERS
+        # =============================================================================
+        detection:
+            # DBSCAN clustering parameters
+            dbscan_eps: 0.3 # Maximum distance between points in a cluster (meters)
+            dbscan_min_samples: 3 # Minimum points required to form a cluster
+
+            # Cluster validation
+            min_cluster_size: 3 # Minimum points per valid cluster
+            max_cluster_size: 50 # Maximum points per valid cluster
+
+            # Object size constraints
+            min_object_width: 0.2 # Minimum object width (meters)
+            max_object_width: 2.0 # Maximum object width (meters)
+
+            # Detection confidence
+            confidence_threshold: 0.5 # Minimum confidence for publishing detections
+
+        # =============================================================================
+        # OBJECT TRACKING PARAMETERS
+        # =============================================================================
+        tracking:
+            # Track association
+            max_tracking_distance: 1.0 # Maximum distance for associating detections with tracks (meters)
+
+            # Track lifecycle
+            track_timeout: 2.0 # Time before removing lost tracks (seconds)
+
+            # Kalman filter tuning
+            process_noise: 0.1 # Process noise for Kalman filter
+            measurement_noise: 0.1 # Measurement noise for Kalman filter
+
+            # Velocity constraints
+            max_velocity: 15.0 # Maximum believable velocity (m/s)
+            velocity_smoothing_factor: 0.7 # Velocity smoothing coefficient [0-1]
+            position_smoothing_factor: 0.8 # Position smoothing coefficient [0-1]
+
+        # =============================================================================
+        # PUBLISHING AND VISUALIZATION PARAMETERS
+        # =============================================================================
+        publishing:
+            # Update rates
+            detection_rate: 10.0 # Detection processing rate (Hz)
+            visualization_rate: 10.0 # Marker publishing rate (Hz)
+
+            # Marker visualization
+            marker_lifetime: 1.0 # Marker lifetime (seconds)
+            marker_scale: 0.3 # Default marker size
+
+            # Confidence-based coloring
+            high_confidence_threshold: 0.8 # Threshold for high confidence (green markers)
+            low_confidence_threshold: 0.3 # Threshold for low confidence (red markers)
+
+        # =============================================================================
+        # ADVANCED FEATURES
+        # =============================================================================
+        advanced:
+            # Temporal filtering
+            enable_temporal_filtering: true # Enable multi-frame filtering
+            temporal_buffer_size: 5 # Number of scans to buffer
+
+            # Prediction
+            enable_prediction: true # Enable position prediction
+            prediction_horizon: 0.5 # Prediction time horizon (seconds)
+
+            # Opponent-specific tuning
+            opponent_size_range: [0.4, 1.8] # Expected opponent size range (meters)
+            opponent_speed_range: [0.0, 12.0] # Expected opponent speed range (m/s)
+
+        # =============================================================================
+        # SAFETY AND PERFORMANCE PARAMETERS
+        # =============================================================================
+        safety:
+            # Emergency detection
+            critical_distance: 1.0 # Distance for critical opponent alerts (meters)
+            emergency_brake_distance: 0.5 # Distance for emergency alerts (meters)
+
+            # Performance limits
+            max_processing_time: 0.05 # Maximum processing time per scan (seconds)
+            max_detections_per_scan: 10 # Maximum number of detections to process
+
+        # =============================================================================
+        # DEBUGGING AND LOGGING
+        # =============================================================================
+        debug:
+            # Logging levels
+            enable_debug_logging: false # Enable detailed debug output
+            log_detection_stats: true # Log detection statistics
+            log_tracking_info: true # Log tracking information
+
+            # Performance monitoring
+            monitor_processing_time: true # Monitor and log processing times
+            warn_slow_processing: true # Warn if processing is slow
+
+            # Data recording (for development)
+            record_scan_data: false # Record raw scan data
+            record_detections: false # Record detection results
