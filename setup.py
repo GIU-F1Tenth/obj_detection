@@ -6,7 +6,7 @@ package_name = 'obj_detection'
 
 setup(
     name=package_name,
-    version='2.0.1',
+    version='2.1.1',
     packages=find_packages(exclude=['test']),
     data_files=[
         ('share/ament_index/resource_index/packages',

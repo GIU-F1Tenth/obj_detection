@@ -16,7 +16,7 @@ lidar_object_detection_node:
             max_angle: 3.14159 # Maximum scan angle (radians, +π)
 
             # Noise filtering
-            noise_filter_window: 5 # Moving average window size for noise reduction
+            noise_filter_window: 3 # Moving average window size for noise reduction
             outlier_threshold: 2.0 # Standard deviations for outlier removal
 
             # Intensity filtering (if available)
@@ -32,11 +32,11 @@ lidar_object_detection_node:
 
             # Cluster validation
             min_cluster_size: 3 # Minimum points per valid cluster
-            max_cluster_size: 50 # Maximum points per valid cluster
+            max_cluster_size: 120 # Maximum points per valid cluster
 
             # Object size constraints
             min_object_width: 0.2 # Minimum object width (meters)
-            max_object_width: 2.0 # Maximum object width (meters)
+            max_object_width: 0.6 # Maximum object width (meters)
 
             # Detection confidence
             confidence_threshold: 0.5 # Minimum confidence for publishing detections
