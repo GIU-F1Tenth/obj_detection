@@ -10,24 +10,20 @@ Author: F1TENTH Team
 License: MIT
 """
 
-import numpy as np
 import math
-from typing import List, Tuple, Optional
-from dataclasses import dataclass
 from collections import deque
+from dataclasses import dataclass
+from typing import List, Tuple
 
+import numpy as np
 import rclpy
+from geometry_msgs.msg import PoseStamped
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
-
-from sensor_msgs.msg import LaserScan
-from geometry_msgs.msg import Point, Pose, PoseStamped, Twist
-from visualization_msgs.msg import Marker, MarkerArray
-from nav_msgs.msg import OccupancyGrid
-from std_msgs.msg import Header, ColorRGBA
-
-from sklearn.cluster import DBSCAN
+from rclpy.qos import QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 from scipy.spatial.distance import euclidean
+from sensor_msgs.msg import LaserScan
+from std_msgs.msg import ColorRGBA
+from visualization_msgs.msg import Marker, MarkerArray
 
 
 @dataclass
