@@ -1,0 +1,92 @@
+# Test Configuration for LiDAR Object Detection Node
+# Optimized parameters for testing and validation
+
+lidar_object_detection_node:
+    ros__parameters:
+        # =============================================================================
+        # TEST FILTER PARAMETERS - More permissive for test data
+        # =============================================================================
+        filter:
+            min_range: 0.05        # Very close range for testing
+            max_range: 12.0        # Extended range for test scenarios
+            min_angle: -3.14159    # Full coverage
+            max_angle: 3.14159
+            noise_filter_window: 2  # Smaller window for faster processing
+            outlier_threshold: 3.0  # More permissive for synthetic data
+            intensity_threshold: 50.0  # Lower threshold for test data
+
+        # =============================================================================
+        # TEST DETECTION PARAMETERS - Optimized for synthetic objects
+        # =============================================================================
+        detection:
+            # Clustering parameters optimized for test objects
+            dbscan_eps: 0.25              # Tighter clustering for clean test data
+            dbscan_min_samples: 2         # Fewer points needed for test objects
+            
+            # Cluster validation for test scenarios
+            min_cluster_size: 2           # Smaller clusters for synthetic data
+            max_cluster_size: 50          # Reasonable upper limit
+            
+            # F1TENTH car dimensions for testing
+            min_object_width: 0.15        # Slightly smaller for test flexibility
+            max_object_width: 0.8         # Slightly larger to catch edge cases
+            
+            # Lower confidence threshold for testing
+            confidence_threshold: 0.3     # More sensitive detection
+
+        # =============================================================================
+        # TEST TRACKING PARAMETERS - Faster response for testing
+        # =============================================================================
+        tracking:
+            # More responsive tracking for tests
+            max_tracking_distance: 0.8    # Tighter association for clean data
+            track_timeout: 1.0            # Faster timeout for test efficiency
+            velocity_smoothing_factor: 0.5 # Less smoothing for test responsiveness
+            position_smoothing_factor: 0.6
+            max_velocity: 20.0            # Higher limit for test scenarios
+
+        # =============================================================================
+        # TEST DEBUG PARAMETERS - Enhanced logging for validation
+        # =============================================================================
+        debug:
+            enable_debug_logging: true     # Detailed logging for test analysis
+            monitor_processing_time: true  # Performance monitoring
+            publish_debug_markers: true    # Additional visualization
+            log_detection_details: true    # Detailed detection information
+            save_test_data: false          # Option to save test results
+
+        # =============================================================================
+        # TEST SCENARIO PARAMETERS - Specific to test scenarios
+        # =============================================================================
+        test:
+            validate_detections: true      # Enable detection validation
+            expected_objects: 1            # Number of expected objects (updated by tests)
+            tolerance_position: 0.2        # Position tolerance for validation (meters)
+            tolerance_velocity: 0.1        # Velocity tolerance (m/s)
+            max_false_positives: 2         # Maximum allowed false detections
+            min_detection_rate: 0.8        # Minimum detection rate (0.0-1.0)
+
+        # =============================================================================
+        # PERFORMANCE TEST PARAMETERS
+        # =============================================================================
+        performance:
+            max_processing_time: 0.05      # Maximum allowed processing time (seconds)
+            target_frequency: 10.0         # Target processing frequency (Hz)
+            memory_limit_mb: 100           # Memory usage limit (MB)
+            cpu_limit_percent: 50          # CPU usage limit (%)
+
+        # =============================================================================
+        # ADVANCED TEST PARAMETERS
+        # =============================================================================
+        advanced:
+            # Kalman filter tuning for test scenarios
+            kalman_process_noise: 0.05     # Lower noise for cleaner test data
+            kalman_measurement_noise: 0.02 # More precise measurements in tests
+            
+            # Geometry parameters for test validation
+            geometry_validation: true      # Enable geometric consistency checks
+            temporal_validation: true      # Enable temporal consistency checks
+            
+            # Test-specific algorithm parameters
+            test_mode_clustering: true     # Use test-optimized clustering
+            synthetic_data_mode: true      # Optimizations for synthetic data

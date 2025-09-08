@@ -28,6 +28,7 @@ setup(
     entry_points={
         'console_scripts': [
             "lidar_obj_detection_node = lidar_obj_detection.lidar_obj_detection_node:main",
+            "test_data_publisher = lidar_obj_detection.test_data_publisher:main",
         ],
     },
 )
