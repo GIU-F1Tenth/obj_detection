@@ -42,9 +42,9 @@ class DetectionConfig:
     dbscan_min_samples: int = 3  # Minimum points per cluster
     min_cluster_size: int = 3  # Minimum cluster size for valid detection
     max_cluster_size: int = 120  # Maximum cluster size for valid detection
-    min_object_width: float = 0.2  # Minimum object width (m) along minor axis
-    max_object_width: float = 0.6  # Maximum object width (m) along minor axis
-    confidence_threshold: float = 0.5  # Minimum confidence for publishing
+    min_object_width: float = 0.1  # Minimum object width (m) along minor axis - more lenient
+    max_object_width: float = 0.8  # Maximum object width (m) along minor axis - more lenient
+    confidence_threshold: float = 0.3  # Minimum confidence for publishing - more lenient
 
 
 @dataclass
@@ -268,16 +268,51 @@ class GeometryDetector:
     
     def cluster_extent_pca(self, cluster_xy: np.ndarray) -> Tuple[float, float]:
         """Compute major and minor extents using PCA for robustness to outliers."""
-        C = cluster_xy - cluster_xy.mean(axis=0)
-        if C.shape[0] == 1:
+        if cluster_xy.shape[0] < 2:
             return 0.0, 0.0
-        # SVD of centered points
-        U, S, _ = np.linalg.svd(C, full_matrices=False)
-        proj = C @ U  # project onto principal axes
-        extents = proj.max(axis=0) - proj.min(axis=0)
-        major = float(extents[0]) if extents.shape[0] > 0 else 0.0
-        minor = float(extents[1]) if extents.shape[0] > 1 else 0.0
-        return major, minor
+        
+        # Ensure we have at least 2D data
+        if cluster_xy.shape[1] < 2:
+            cluster_xy = np.column_stack([cluster_xy.flatten(), np.zeros(cluster_xy.shape[0])])
+        
+        C = cluster_xy - cluster_xy.mean(axis=0)
+        
+        # Handle degenerate cases
+        if np.allclose(C, 0):
+            return 0.0, 0.0
+        
+        try:
+            # SVD of centered points - ensure proper dimensions
+            U, S, Vt = np.linalg.svd(C, full_matrices=False)
+            
+            # Project onto principal axes
+            proj = C @ Vt.T
+            
+            # Calculate extents along each principal axis
+            extents = np.ptp(proj, axis=0)  # peak-to-peak (max - min)
+            
+            # Ensure we have at least 2 extents
+            if len(extents) >= 2:
+                major = float(extents[0])
+                minor = float(extents[1])
+            elif len(extents) == 1:
+                major = float(extents[0])
+                minor = 0.0
+            else:
+                major = 0.0
+                minor = 0.0
+                
+            return major, minor
+            
+        except (np.linalg.LinAlgError, ValueError) as e:
+            # Fallback to simple bounding box calculation
+            if cluster_xy.shape[0] > 1:
+                extents = np.ptp(cluster_xy, axis=0)
+                major = float(extents[0]) if len(extents) > 0 else 0.0
+                minor = float(extents[1]) if len(extents) > 1 else 0.0
+                return major, minor
+            else:
+                return 0.0, 0.0
     
     def segment_ring(self, angles: np.ndarray, ranges: np.ndarray, angle_increment: float) -> List[np.ndarray]:
         """Segment the scan into clusters using consecutive-beam gap thresholding."""
