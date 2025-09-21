@@ -2,4 +2,8 @@ lidar_cluster_node:
   ros__parameters:
     cluster_pub_topic: "/clusters"
     scan_sub_topic: "/scan"
-    
+    laser_frame: "ego_racecar/laser"
+    base_frame: "ego_racecar/base_link"
+    map_frame: "map"
+    map_sub_topic: "/map"
+    obj_detected_pub_topic: "/obj_detected"

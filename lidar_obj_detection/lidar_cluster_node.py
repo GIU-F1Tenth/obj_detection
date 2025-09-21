@@ -1,30 +1,89 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
+from nav_msgs.msg import OccupancyGrid
 from visualization_msgs.msg import Marker
 import numpy as np
 from sklearn.cluster import DBSCAN
 from std_msgs.msg import Bool
 import math
 import time
+from rclpy.qos import QoSProfile, DurabilityPolicy
+from tf2_ros import Buffer, TransformListener
+from tf2_ros.transform_broadcaster import TransformBroadcaster
+import tf2_geometry_msgs
+from geometry_msgs.msg import PointStamped, Pose
+from tf_transformations import euler_from_quaternion, quaternion_from_euler
 
 class LidarClusterNode(Node):
     def __init__(self):
         super().__init__('lidar_cluster_node')
+
+        # Declare parameters
+        self.declare_parameter('cluster_pub_topic', '/clusters')
+        self.declare_parameter('scan_sub_topic', '/scan')
+        self.declare_parameter('laser_frame', 'ego_racecar/laser')
+        self.declare_parameter('base_frame', 'ego_racecar/base_link')
+        self.declare_parameter('map_frame', 'map')
+        self.declare_parameter('map_sub_topic', '/map')
+        self.declare_parameter('obj_detected_pub_topic', '/obj_detected')
+        self.declare_parameter('outlier_diff_threshold', 0.1)
+        self.declare_parameter('angle_thresh', 60.0)
+
+        # Get parameters
+        cluster_pub_topic = self.get_parameter('cluster_pub_topic').get_parameter_value().string_value
+        scan_sub_topic = self.get_parameter('scan_sub_topic').get_parameter_value().string_value
+        laser_frame = self.get_parameter('laser_frame').get_parameter_value().string_value
+        base_frame = self.get_parameter('base_frame').get_parameter_value().string_value
+        map_sub_topic = self.get_parameter('map_sub_topic').get_parameter_value().string_value
+        obj_detected_pub_topic = self.get_parameter('obj_detected_pub_topic').get_parameter_value().string_value
+        self.map_frame = self.get_parameter('map_frame').get_parameter_value().string_value
+        self.outlier_diff_threshold = self.get_parameter('outlier_diff_threshold').get_parameter_value().double_value
+        self.angle_thresh = self.get_parameter('angle_thresh').get_parameter_value().double_value
+
+        self.laser_frame = laser_frame
+        self.base_link_frame = base_frame
+
         self.subscription = self.create_subscription(
             LaserScan,
-            '/scan',
+            scan_sub_topic,
             self.scan_callback,
             10
         )
-        self.marker_pub = self.create_publisher(Marker, '/clusters', 10)
-        self.obj_detected_pub = self.create_publisher(Bool, '/tmp/obj_detected', 10)
+        # QoS for map subscription
+        map_qos = QoSProfile(depth=10)
+        map_qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
+        self.map_sub = self.create_subscription(
+            OccupancyGrid,
+            map_sub_topic,
+            self.map_callback,
+            map_qos
+        )
+
+        self.marker_pub = self.create_publisher(Marker, cluster_pub_topic, 10)
+        self.obj_detected_pub = self.create_publisher(Bool, obj_detected_pub_topic, 10)
+
         self.marker_id = 0
-        self.angle_thresh = 15.0
-        self.pub_true_timer = None  # Timer to publish True periodically
+        self.pub_true_timer = None
         self.counter = 0
 
-    def scan_callback(self, msg):
+        self.map = None
+
+        self.car_pose_on_map = Pose()
+
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
+        self.pose_timer = self.create_timer(0.01, self.get_pose)
+
+    def map_callback(self, msg: OccupancyGrid):
+        self.map = msg
+
+    def scan_callback(self, msg: LaserScan):
+        
+        if self.map is None:
+            self.get_logger().warn("No map received yet.")
+            return
+
         self.marker_id = 0  # reset marker ID for each scan
 
         angles = np.arange(msg.angle_min, msg.angle_max, msg.angle_increment)
@@ -60,6 +119,24 @@ class LidarClusterNode(Node):
             color = (0.0, 1.0, 0.0)  # green by default
             angle = np.arctan2(center[1], center[0])
             if 0.20 < size < 0.25 and distance < 3.0 and center[0] > 0 and abs(angle) < np.radians(self.angle_thresh):
+                # Transform cluster center to map frame
+                point_in_laser = Pose()
+                point_in_laser.position.x = center[0]
+                point_in_laser.position.y = center[1]
+                q = quaternion_from_euler(0, 0, angle)
+                point_in_laser.orientation.x = q[0]
+                point_in_laser.orientation.y = q[1]
+                point_in_laser.orientation.z = q[2]
+                point_in_laser.orientation.w = q[3]
+                point_in_map = self.transform_to_map_frame(point_in_laser, self.car_pose_on_map)
+                grid_coords = self.world_to_grid(point_in_map)
+
+                if not self.is_occupied(grid_coords):
+                    self.get_logger().warn(">> ignoring")
+                    color = (0.0, 0.0, 1.0)  # blue
+                    self.publish_marker(center[0], center[1], size, color)
+                    continue
+
                 self.get_logger().warn(">> Likely another robot nearby!")
                 self.get_logger().info(f"Position -> x: {center[0]:.2f}, y: {center[1]:.2f}")
                 color = (1.0, 0.0, 0.0)  # red
@@ -74,6 +151,36 @@ class LidarClusterNode(Node):
                     self.obj_detected_pub.publish(Bool(data=False))
                 pass # self.get_logger().info(">> Not a robot, ignoring cluster")
 
+    def get_pose(self):
+        """
+        Main control loop that gets robot pose and executes pure pursuit control.
+
+        This method is called at the configured control frequency. It:
+        1. Gets the current robot pose from TF2
+        2. Calculates lookahead distance based on current velocity
+        3. Finds the appropriate lookahead point on the path
+        4. Executes pure pursuit control to track that point
+        5. Publishes visualization markers for debugging
+        """
+        try:
+            now = rclpy.time.Time()
+            transform = self.tf_buffer.lookup_transform(
+                self.map_frame,          # target_frame
+                self.base_link_frame,    # source_frame
+                now,
+                timeout=rclpy.duration.Duration(seconds=0.5)
+            )
+
+            trans = transform.transform.translation
+            rot = transform.transform.rotation
+
+            self.car_pose_on_map.position.x = trans.x
+            self.car_pose_on_map.position.y = trans.y
+            self.car_pose_on_map.orientation = rot
+
+        except Exception as e:
+            self.get_logger().warn(f"Transform not available: {e}")
+
     def publish_true(self):
         if self.pub_true_timer:
             self.counter += 1
@@ -85,7 +192,7 @@ class LidarClusterNode(Node):
 
     def publish_marker(self, x, y, size, color):
         marker = Marker()
-        marker.header.frame_id = "laser"
+        marker.header.frame_id = self.laser_frame
         marker.header.stamp = self.get_clock().now().to_msg()
         marker.ns = "clusters"
         marker.id = self.marker_id
@@ -105,6 +212,50 @@ class LidarClusterNode(Node):
         marker.color.b = color[2]
         marker.color.a = 0.8
         self.marker_pub.publish(marker)
+
+    def transform_to_vehicle_frame(self, point_on_map: Pose, car_pose: Pose):
+        # Convert quaternion to yaw angle
+        orientation_list = [car_pose.orientation.x, car_pose.orientation.y, car_pose.orientation.z, car_pose.orientation.w]
+        _, _, yaw = euler_from_quaternion(orientation_list)
+        dx = point_on_map.position.x - car_pose.position.x
+        dy = point_on_map.position.y - car_pose.position.y
+        transformed_x = math.cos(-yaw) * dx - math.sin(-yaw) * dy
+        transformed_y = math.sin(-yaw) * dx + math.cos(-yaw) * dy
+        return transformed_x, transformed_y
+
+    def transform_to_map_frame(self, point: Pose, car_pose: Pose):
+        # Convert quaternion to yaw angle
+        orientation_list = [car_pose.orientation.x, car_pose.orientation.y, car_pose.orientation.z, car_pose.orientation.w]
+        _, _, yaw = euler_from_quaternion(orientation_list)
+        transformed_x = (math.cos(yaw) * point.position.x - math.sin(yaw) * point.position.y) + car_pose.position.x
+        transformed_y = (math.sin(yaw) * point.position.x + math.cos(yaw) * point.position.y) + car_pose.position.y
+        transformed_pose = Pose()
+        transformed_pose.position.x = transformed_x
+        transformed_pose.position.y = transformed_y
+        return transformed_pose
+
+    def world_to_grid(self, pose: Pose) -> tuple:
+        grid_x = int((pose.position.x - self.map.info.origin.position.x) / self.map.info.resolution)
+        grid_y = int((pose.position.y - self.map.info.origin.position.y) / self.map.info.resolution)
+        return (grid_x, grid_y)
+
+    def grid_to_world(self, node: tuple) -> Pose:
+        pose = Pose()
+        pose.position.x = node[0] * self.map.info.resolution + self.map.info.origin.position.x
+        pose.position.y = node[1] * self.map.info.resolution + self.map.info.origin.position.y
+        return pose
+
+    def pose_to_cell(self, node: tuple):
+        return node[1] * self.map.info.width + node[0]
+
+    def pose_on_map(self, node: tuple):
+        return 0 <= node[0] < self.map.info.width and 0 <= node[1] < self.map.info.height
+
+    def is_occupied(self, node: tuple):
+        if not self.pose_on_map(node):
+            return False
+        cell = self.pose_to_cell(node)
+        return self.map.data[cell] > 99  # Occupied if probability > 99
 
 def main():
     rclpy.init()
