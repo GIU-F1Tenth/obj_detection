@@ -2,10 +2,17 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>obj_detection</name>
-  <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <version>1.0.0</version>
+  <description>
+    A comprehensive ROS2 package for LiDAR-based object detection and clustering 
+    designed for F1TENTH autonomous racing applications. Provides multiple algorithms 
+    for detecting racing opponents, obstacles, and track boundaries using LiDAR data.
+  </description>
+  <license>MIT</license>
   <maintainer email="sosototo427@gmail.com">salmatarek</maintainer>
-  <license>TODO: License declaration</license>
+  <author email="sosototo427@gmail.com">Salma Tarek</author>
+  <author>Hatem</author>
+  <maintainer email="fam@awadlouis.com">Fam Shihata</maintainer>
 
   <depend>sensor_msgs</depend>
   <depend>vision_msgs</depend>

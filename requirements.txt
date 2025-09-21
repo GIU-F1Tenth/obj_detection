@@ -1,0 +1,54 @@
+# F1TENTH Object Detection Package Requirements
+# 
+# This file lists all Python dependencies required for the object detection package.
+# Install these dependencies using: pip install -r requirements.txt
+#
+# Core Dependencies
+# =================
+
+# Numerical computing and data processing
+numpy>=1.20.0
+
+# Machine learning and clustering algorithms
+scikit-learn>=1.0.0          # DBSCAN clustering algorithm
+hdbscan>=0.8.28              # Hierarchical density-based clustering (optional, for advanced features)
+
+# Computer vision and image processing (for utility scripts)
+opencv-python>=4.5.0         # Computer vision library
+ultralytics>=8.0.0           # YOLO object detection (for utility examples)
+
+# Camera interfaces (for utility scripts)
+pyrealsense2>=2.50.0         # Intel RealSense camera support (optional)
+
+# Data visualization and analysis (for development and debugging)
+matplotlib>=3.3.0            # Plotting and visualization
+scipy>=1.7.0                 # Scientific computing utilities
+
+# ROS2 Dependencies (installed separately via apt)
+# ===============================================
+# These are installed via system package manager, not pip:
+#
+# sudo apt install ros-humble-sensor-msgs
+# sudo apt install ros-humble-visualization-msgs  
+# sudo apt install ros-humble-nav-msgs
+# sudo apt install ros-humble-vision-msgs
+# sudo apt install ros-humble-tf2-ros
+# sudo apt install ros-humble-tf2-geometry-msgs
+#
+# Core ROS2 packages:
+# - rclpy (ROS2 Python client library)
+# - sensor_msgs (LiDAR and sensor message types)
+# - visualization_msgs (RViz marker messages)
+# - nav_msgs (Map and navigation messages)
+# - vision_msgs (3D detection messages)
+# - tf2_ros (Transform handling)
+# - geometry_msgs (Geometric message types)
+
+# Development Dependencies (optional)
+# ===================================
+# Uncomment these for development and testing:
+
+# pytest>=6.0.0               # Testing framework
+# black>=21.0.0                # Code formatting
+# flake8>=3.9.0                # Code linting
+# mypy>=0.910                  # Type checking

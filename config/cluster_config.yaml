@@ -1,3 +1,12 @@
+# F1TENTH Object Detection Configuration
+#
+# This configuration file contains parameters for the LiDAR clustering node
+# used in F1TENTH autonomous racing object detection. These parameters
+# control the behavior of the clustering algorithm and topic assignments.
+#
+# Author: F1TENTH Object Detection Team
+# License: MIT
+
 lidar_cluster_node:
   ros__parameters:
     cluster_pub_topic: "/clusters"
