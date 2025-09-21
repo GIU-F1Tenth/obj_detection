@@ -7,3 +7,12 @@ lidar_cluster_node:
     map_frame: "map"
     map_sub_topic: "/map"
     obj_detected_pub_topic: "/obj_detected"
+    outlier_diff_threshold: 0.1
+    angle_thresh: 60.0 
+    min_cluster_size: 0.2
+    max_cluster_size: 0.25
+    eps: 0.07
+    min_samples: 10
+    max_distance: 3.0
+    safety_radius: 0.5
+    occupied_threshold: 60
