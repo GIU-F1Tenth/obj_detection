@@ -26,7 +26,6 @@ class LidarClusterNode(Node):
         self.declare_parameter('base_frame', 'ego_racecar/base_link')
         self.declare_parameter('map_frame', 'map')
         self.declare_parameter('map_sub_topic', '/map')
-        self.declare_parameter('obj_detected_pub_topic', '/obj_detected')
         self.declare_parameter('outlier_diff_threshold', 0.1)
         self.declare_parameter('angle_thresh', 60.0)
         self.declare_parameter('min_cluster_size', 0.20)
@@ -43,7 +42,6 @@ class LidarClusterNode(Node):
         laser_frame = self.get_parameter('laser_frame').get_parameter_value().string_value
         base_frame = self.get_parameter('base_frame').get_parameter_value().string_value
         map_sub_topic = self.get_parameter('map_sub_topic').get_parameter_value().string_value
-        obj_detected_pub_topic = self.get_parameter('obj_detected_pub_topic').get_parameter_value().string_value
         self.map_frame = self.get_parameter('map_frame').get_parameter_value().string_value
         self.outlier_diff_threshold = self.get_parameter('outlier_diff_threshold').get_parameter_value().double_value
         self.angle_thresh = self.get_parameter('angle_thresh').get_parameter_value().double_value
@@ -148,8 +146,6 @@ class LidarClusterNode(Node):
                 color = (1.0, 0.0, 0.0)  # red
                 self.publish_marker(point_in_map.position.x, point_in_map.position.y, size, color)
                 self.get_logger().info(f"Cluster size: {size:.2f} m, Distance: {distance:.2f} m")
-            else:
-                pass
 
     def get_pose(self):
         """
