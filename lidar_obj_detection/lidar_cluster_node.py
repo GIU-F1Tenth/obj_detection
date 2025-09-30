@@ -15,6 +15,7 @@ import tf2_geometry_msgs
 from geometry_msgs.msg import PointStamped, Pose
 from tf_transformations import euler_from_quaternion, quaternion_from_euler
 
+
 class LidarClusterNode(Node):
     def __init__(self):
         super().__init__('lidar_cluster_node')
@@ -31,27 +32,44 @@ class LidarClusterNode(Node):
         self.declare_parameter('min_cluster_size', 0.20)
         self.declare_parameter('max_cluster_size', 0.25)
         self.declare_parameter('eps', 0.07)  # DBSCAN parameter
-        self.declare_parameter('min_samples', 10) # DBSCAN parameter
-        self.declare_parameter('max_distance', 3.0)  # Max distance for clustering
-        self.declare_parameter('safety_radius', 0.1)  # Safety radius around detected objects
-        self.declare_parameter('occupied_threshold', 60)  # Occupied cell threshold in the map
+        self.declare_parameter('min_samples', 10)  # DBSCAN parameter
+        # Max distance for clustering
+        self.declare_parameter('max_distance', 3.0)
+        # Safety radius around detected objects
+        self.declare_parameter('safety_radius', 0.1)
+        # Occupied cell threshold in the map
+        self.declare_parameter('occupied_threshold', 60)
 
         # Get parameters
-        cluster_pub_topic = self.get_parameter('cluster_pub_topic').get_parameter_value().string_value
-        scan_sub_topic = self.get_parameter('scan_sub_topic').get_parameter_value().string_value
-        laser_frame = self.get_parameter('laser_frame').get_parameter_value().string_value
-        base_frame = self.get_parameter('base_frame').get_parameter_value().string_value
-        map_sub_topic = self.get_parameter('map_sub_topic').get_parameter_value().string_value
-        self.map_frame = self.get_parameter('map_frame').get_parameter_value().string_value
-        self.outlier_diff_threshold = self.get_parameter('outlier_diff_threshold').get_parameter_value().double_value
-        self.angle_thresh = self.get_parameter('angle_thresh').get_parameter_value().double_value
-        self.min_cluster_size = self.get_parameter('min_cluster_size').get_parameter_value().double_value
-        self.max_cluster_size = self.get_parameter('max_cluster_size').get_parameter_value().double_value
+        cluster_pub_topic = self.get_parameter(
+            'cluster_pub_topic').get_parameter_value().string_value
+        scan_sub_topic = self.get_parameter(
+            'scan_sub_topic').get_parameter_value().string_value
+        laser_frame = self.get_parameter(
+            'laser_frame').get_parameter_value().string_value
+        base_frame = self.get_parameter(
+            'base_frame').get_parameter_value().string_value
+        map_sub_topic = self.get_parameter(
+            'map_sub_topic').get_parameter_value().string_value
+        self.map_frame = self.get_parameter(
+            'map_frame').get_parameter_value().string_value
+        self.outlier_diff_threshold = self.get_parameter(
+            'outlier_diff_threshold').get_parameter_value().double_value
+        self.angle_thresh = self.get_parameter(
+            'angle_thresh').get_parameter_value().double_value
+        self.min_cluster_size = self.get_parameter(
+            'min_cluster_size').get_parameter_value().double_value
+        self.max_cluster_size = self.get_parameter(
+            'max_cluster_size').get_parameter_value().double_value
         self.eps = self.get_parameter('eps').get_parameter_value().double_value
-        self.min_samples = self.get_parameter('min_samples').get_parameter_value().integer_value
-        self.max_distance = self.get_parameter('max_distance').get_parameter_value().double_value
-        self.safety_radius = self.get_parameter('safety_radius').get_parameter_value().double_value
-        self.occupied_threshold = self.get_parameter('occupied_threshold').get_parameter_value().integer_value
+        self.min_samples = self.get_parameter(
+            'min_samples').get_parameter_value().integer_value
+        self.max_distance = self.get_parameter(
+            'max_distance').get_parameter_value().double_value
+        self.safety_radius = self.get_parameter(
+            'safety_radius').get_parameter_value().double_value
+        self.occupied_threshold = self.get_parameter(
+            'occupied_threshold').get_parameter_value().integer_value
 
         self.laser_frame = laser_frame
         self.base_link_frame = base_frame
@@ -89,7 +107,7 @@ class LidarClusterNode(Node):
         self.map = msg
 
     def scan_callback(self, msg: LaserScan):
-        
+
         if self.map is None:
             self.get_logger().warn("No map received yet.")
             return
@@ -111,7 +129,8 @@ class LidarClusterNode(Node):
             return
 
         # DBSCAN tuned for detecting ~12x12 cm robot
-        clustering = DBSCAN(eps=self.eps, min_samples=self.min_samples).fit(points)
+        clustering = DBSCAN(
+            eps=self.eps, min_samples=self.min_samples).fit(points)
         labels = clustering.labels_
 
         unique_labels = set(labels)
@@ -132,20 +151,25 @@ class LidarClusterNode(Node):
                 point_in_laser = Pose()
                 point_in_laser.position.x = center[0]
                 point_in_laser.position.y = center[1]
-                point_in_map = self.transform_to_map_frame(point_in_laser, self.car_pose_on_map)
+                point_in_map = self.transform_to_map_frame(
+                    point_in_laser, self.car_pose_on_map)
                 grid_coords = self.world_to_grid(point_in_map)
 
                 if self.is_occupied(grid_coords, radius=int(self.safety_radius / self.map.info.resolution)):
                     self.get_logger().warn(">> ignoring cluster, it is the map !")
                     color = (0.0, 0.0, 1.0)  # blue
-                    self.publish_marker(point_in_map.position.x, point_in_map.position.y, size, color)
+                    self.publish_marker(
+                        point_in_map.position.x, point_in_map.position.y, size, color)
                     continue
 
                 self.get_logger().warn(">> Likely another robot nearby!")
-                self.get_logger().info(f"Position -> x: {center[0]:.2f}, y: {center[1]:.2f} in laser frame")
+                self.get_logger().info(
+                    f"Position -> x: {center[0]:.2f}, y: {center[1]:.2f} in laser frame")
                 color = (1.0, 0.0, 0.0)  # red
-                self.publish_marker(point_in_map.position.x, point_in_map.position.y, size, color)
-                self.get_logger().info(f"Cluster size: {size:.2f} m, Distance: {distance:.2f} m")
+                self.publish_marker(point_in_map.position.x,
+                                    point_in_map.position.y, size, color)
+                self.get_logger().info(
+                    f"Cluster size: {size:.2f} m, Distance: {distance:.2f} m")
 
     def get_pose(self):
         """
@@ -202,7 +226,8 @@ class LidarClusterNode(Node):
 
     def transform_to_vehicle_frame(self, point_on_map: Pose, car_pose: Pose):
         # Convert quaternion to yaw angle
-        orientation_list = [car_pose.orientation.x, car_pose.orientation.y, car_pose.orientation.z, car_pose.orientation.w]
+        orientation_list = [car_pose.orientation.x, car_pose.orientation.y,
+                            car_pose.orientation.z, car_pose.orientation.w]
         _, _, yaw = euler_from_quaternion(orientation_list)
         dx = point_on_map.position.x - car_pose.position.x
         dy = point_on_map.position.y - car_pose.position.y
@@ -212,24 +237,31 @@ class LidarClusterNode(Node):
 
     def transform_to_map_frame(self, point: Pose, car_pose: Pose):
         # Convert quaternion to yaw angle
-        orientation_list = [car_pose.orientation.x, car_pose.orientation.y, car_pose.orientation.z, car_pose.orientation.w]
+        orientation_list = [car_pose.orientation.x, car_pose.orientation.y,
+                            car_pose.orientation.z, car_pose.orientation.w]
         _, _, yaw = euler_from_quaternion(orientation_list)
-        transformed_x = (math.cos(yaw) * point.position.x - math.sin(yaw) * point.position.y) + car_pose.position.x
-        transformed_y = (math.sin(yaw) * point.position.x + math.cos(yaw) * point.position.y) + car_pose.position.y
+        transformed_x = (math.cos(yaw) * point.position.x -
+                         math.sin(yaw) * point.position.y) + car_pose.position.x
+        transformed_y = (math.sin(yaw) * point.position.x +
+                         math.cos(yaw) * point.position.y) + car_pose.position.y
         transformed_pose = Pose()
         transformed_pose.position.x = transformed_x
         transformed_pose.position.y = transformed_y
         return transformed_pose
 
     def world_to_grid(self, pose: Pose) -> tuple:
-        grid_x = int((pose.position.x - self.map.info.origin.position.x) / self.map.info.resolution)
-        grid_y = int((pose.position.y - self.map.info.origin.position.y) / self.map.info.resolution)
+        grid_x = int(
+            (pose.position.x - self.map.info.origin.position.x) / self.map.info.resolution)
+        grid_y = int(
+            (pose.position.y - self.map.info.origin.position.y) / self.map.info.resolution)
         return (grid_x, grid_y)
 
     def grid_to_world(self, node: tuple) -> Pose:
         pose = Pose()
-        pose.position.x = node[0] * self.map.info.resolution + self.map.info.origin.position.x
-        pose.position.y = node[1] * self.map.info.resolution + self.map.info.origin.position.y
+        pose.position.x = node[0] * self.map.info.resolution + \
+            self.map.info.origin.position.x
+        pose.position.y = node[1] * self.map.info.resolution + \
+            self.map.info.origin.position.y
         return pose
 
     def pose_to_cell(self, node: tuple):
@@ -256,13 +288,15 @@ class LidarClusterNode(Node):
                     if self.map.data[cell] > 60:  # Occupied cell threshold
                         return True
         return False
-    
+
+
 def main():
     rclpy.init()
     node = LidarClusterNode()
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()
+
 
 if __name__ == '__main__':
     main()
