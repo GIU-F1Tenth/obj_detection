@@ -24,3 +24,9 @@ lidar_cluster_node:
     max_distance: 5.0
     safety_radius: 0.3
     occupied_threshold: 50
+    
+    # Object Tracking Parameters
+    tracking_enabled: true
+    max_tracking_distance: 0.5    # Max distance to associate detection with tracked object (meters)
+    max_lost_frames: 10           # Max frames before removing lost track
+    tracked_objects_topic: "/tracked_objects"
