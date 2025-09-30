@@ -20,18 +20,14 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='Salma Tarek',
-    maintainer_email='sosototo427@gmail.com',
-    description='LiDAR-based object detection and clustering for F1TENTH autonomous racing',
+    maintainer='salmatarek, George Halim',
+    maintainer_email='sosototo427@gmail.com, georgehany064@gmail.com',
+    description='Lidar object detection Package',
     license='MIT',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'lidar_obj_detection_node_v1 = lidar_obj_detection.lidar_sub:main',
-            'lidar_obj_detection_node_v2 = lidar_obj_detection.lidar_subscriber_salma:main',
             "lidar_cluster_exe = lidar_obj_detection.lidar_cluster_node:main",
-            "lidar_obj_detection_node = lidar_obj_detection.new_object_detector:main",
-            "lidar_obj_detection_node_v3 = lidar_obj_detection.lidar_sub_modi:main",
         ],
     },
 )

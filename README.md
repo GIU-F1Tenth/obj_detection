@@ -113,6 +113,19 @@ lidar_cluster_node:
     ros__parameters:
         cluster_pub_topic: "/clusters"
         scan_sub_topic: "/scan"
+        laser_frame: "laser"
+        base_frame: "base_link"
+        map_frame: "map"
+        map_sub_topic: "/map"
+        outlier_diff_threshold: 0.1
+        angle_thresh: 60.0 
+        min_cluster_size: 0.2
+        max_cluster_size: 0.25
+        eps: 0.07
+        min_samples: 10
+        max_distance: 3.0
+        safety_radius: 0.5
+        occupied_threshold: 60
 ```
 
 ## Topics
@@ -125,7 +138,6 @@ lidar_cluster_node:
 ### Published Topics
 
 -   `/clusters` (visualization_msgs/Marker) - Detected object markers
--   `/tmp/obj_detected` (std_msgs/Bool) - Object detection flag
 -   `/racing_obstacles` (vision_msgs/Detection3DArray) - 3D obstacle detections
 -   `/track_walls` (vision_msgs/Detection3DArray) - Track wall detections
 
@@ -135,7 +147,9 @@ lidar_cluster_node:
 
 -   Uses DBSCAN clustering optimized for F1TENTH robot detection
 -   Filters objects by size (20-25cm) and distance (<3m)
--   Publishes detection flags and visualization markers
+-   Publishes visualization markers
+-   Filters map walls from clustering
+-   Note that the clusters are published w.r.to the map frame
 
 ### Advanced Clustering (lidar_sub_modi.py)
 
@@ -167,6 +181,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 -   Salma Tarek - Initial LiDAR processing implementation
 -   Hatem - Advanced clustering and optimization
 -   Fam Shihata
+-   George Halim
 -   F1TENTH Community - Continued development
 
 ## Acknowledgments

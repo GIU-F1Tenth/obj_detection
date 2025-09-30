@@ -8,35 +8,19 @@
 # License: MIT
 
 lidar_cluster_node:
-    ros__parameters:
-        # Topic Configuration
-        # -------------------
-        # These parameters define the ROS2 topics used for communication
-
-        # Output topic for publishing detected object markers
-        # Type: visualization_msgs/Marker
-        # Purpose: Visualize detected objects in RViz for debugging and monitoring
-        cluster_pub_topic: "/clusters"
-
-        # Input topic for subscribing to LiDAR scan data
-        # Type: sensor_msgs/LaserScan
-        # Purpose: Receive raw LiDAR measurements for object detection processing
-        scan_sub_topic: "/scan"
-
-        # Algorithm Parameters (Future Expansion)
-        # ---------------------------------------
-        # Additional clustering parameters can be added here as needed:
-        #
-        # # DBSCAN clustering parameters
-        # eps: 0.07                    # Maximum distance between points in a cluster (meters)
-        # min_samples: 5               # Minimum points required to form a cluster
-        #
-        # # Object detection filters
-        # min_object_size: 0.20        # Minimum object size for detection (meters)
-        # max_object_size: 0.25        # Maximum object size for detection (meters)
-        # max_detection_range: 3.0     # Maximum range for object detection (meters)
-        # forward_angle_threshold: 15.0 # Forward detection cone angle (degrees)
-        #
-        # # Performance tuning
-        # processing_frequency: 10.0   # Target processing frequency (Hz)
-        # enable_visualization: true   # Enable/disable marker publishing
+  ros__parameters:
+    cluster_pub_topic: "/clusters"
+    scan_sub_topic: "/scan"
+    laser_frame: "ego_racecar/laser"
+    base_frame: "ego_racecar/base_link"
+    map_frame: "map"
+    map_sub_topic: "/map"
+    outlier_diff_threshold: 0.1
+    angle_thresh: 60.0 
+    min_cluster_size: 0.2
+    max_cluster_size: 0.25
+    eps: 0.07
+    min_samples: 10
+    max_distance: 3.0
+    safety_radius: 0.5
+    occupied_threshold: 60
