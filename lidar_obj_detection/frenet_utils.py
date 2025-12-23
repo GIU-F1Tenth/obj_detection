@@ -103,17 +103,6 @@ class FrenetConverter:
         return float(vx), float(vy)
     
     def cartesian_velocity_to_frenet(self, s: float, d: float, vx: float, vy: float) -> Tuple[float, float]:
-        """Convert Cartesian velocities (vx, vy) to Frenet velocities (vs, vd).
-        
-        Args:
-            s: Longitudinal position along raceline
-            d: Lateral offset from raceline
-            vx: Cartesian velocity in x direction
-            vy: Cartesian velocity in y direction
-            
-        Returns:
-            (vs, vd): Frenet velocity components
-        """
         if self.interp_x is None:
             return 0.0, 0.0
         

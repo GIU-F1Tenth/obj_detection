@@ -1,11 +1,11 @@
 import numpy as np
-from typing import Optional
-from dataclasses import dataclass
+from typing import Optional, List, Tuple
+from dataclasses import dataclass, field
 import time
 
 
 @dataclass
-class FrenetTrackedObject:
+class OpponentState:
     id: int
     s: float
     vs: float
@@ -18,181 +18,167 @@ class FrenetTrackedObject:
     last_seen: float
     age: int
     is_static: bool = False
-    position_history: list = None
+    position_buffer: List[Tuple[float, float]] = field(default_factory=list)
     vx: float = 0.0
     vy: float = 0.0
-    
-    def __post_init__(self):
-        if self.position_history is None:
-            self.position_history = []
-    
-    def get_speed(self) -> float:
-        return np.sqrt(self.vx**2 + self.vy**2)
-    
-    def get_velocity_magnitude_frenet(self) -> float:
-        return np.sqrt(self.vs**2 + self.vd**2)
 
 
-class FrenetEKF:
-    def __init__(self, dt: float = 0.1, 
-                 p_vs: float = 0.5, p_d: float = 0.8, p_vd: float = 0.8,
-                 process_noise_s: float = 0.1, process_noise_vs: float = 0.5,
-                 process_noise_d: float = 0.1, process_noise_vd: float = 0.5,
-                 meas_noise_s: float = 0.2, meas_noise_vs: float = 0.5,
-                 meas_noise_d: float = 0.2, meas_noise_vd: float = 0.5,
-                 track_length: float = 100.0, is_circular_track: bool = False):
+class OpponentEKF:
+    def __init__(self, dt: float = 0.1, track_length: float = 100.0):
         self.dt = dt
-        self.p_vs = p_vs
-        self.p_d = p_d
-        self.p_vd = p_vd
         self.track_length = track_length
-        self.is_circular_track = is_circular_track
+        
+        self.P_vs = 0.2
+        self.P_d = 0.02
+        self.P_vd = 0.2
         
         self.F = np.array([
-            [1, dt, 0, 0],
-            [0, 1, 0, 0],
-            [0, 0, 1, dt],
-            [0, 0, 0, 1]
+            [1.0, dt, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, dt],
+            [0.0, 0.0, 0.0, 1.0]
         ])
         
         self.B = np.array([
-            [0, 0, 0],
-            [p_vs, 0, 0],
-            [0, p_d, 0],
-            [0, 0, p_vd]
+            [0.0, 0.0, 0.0],
+            [self.P_vs, 0.0, 0.0],
+            [0.0, self.P_d, 0.0],
+            [0.0, 0.0, self.P_vd]
         ])
         
         self.H = np.array([
-            [1, 0, 0, 0],  
-            [0, 0, 1, 0] 
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0]
         ])
         
-        self.Q = np.diag([
-            process_noise_s,
-            process_noise_vs,
-            process_noise_d,
-            process_noise_vd
+        Q1 = np.array([
+            [1.95e-7, 1.56e-5],
+            [1.56e-5, 1.25e-3]
+        ])
+        Q2 = np.array([
+            [7.81e-7, 6.25e-5],
+            [6.25e-5, 5e-3]
+        ])
+        self.Q = np.block([
+            [Q1, np.zeros((2, 2))],
+            [np.zeros((2, 2)), Q2]
         ])
         
-        self.R = np.diag([
-            meas_noise_s,
-            meas_noise_d
-        ])
+        self.R = np.diag([0.002, 0.2, 0.002, 0.2])
         
-    def predict(self, state: np.ndarray, P: np.ndarray) -> tuple:
-        state_pred = self.F @ state
+    def predict(self, state: np.ndarray, P: np.ndarray, u: np.ndarray, in_los: bool = True) -> Tuple[np.ndarray, np.ndarray]:
+        state_pred = self.F @ state + self.B @ u
         
-        if self.is_circular_track:
-            state_pred[0] = state_pred[0] % self.track_length
+        state_pred[0] = state_pred[0] % self.track_length
         
         P_pred = self.F @ P @ self.F.T + self.Q
         
         return state_pred, P_pred
         
-    def update(self, state_pred: np.ndarray, P_pred: np.ndarray,
-               measurement: np.ndarray) -> tuple:
-        innovation = measurement - self.H @ state_pred
+    def update(self, state_pred: np.ndarray, P_pred: np.ndarray, z: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        y = z - self.H @ state_pred
         
-        if self.is_circular_track:
-            innovation[0] = self._normalize_s(innovation[0])
+        y[0] = self._normalize_s_residual(y[0])
         
         S = self.H @ P_pred @ self.H.T + self.R
+        
         K = P_pred @ self.H.T @ np.linalg.inv(S)
         
-        state = state_pred + K @ innovation
-        if self.is_circular_track:
-            state[0] = state[0] % self.track_length
+        state = state_pred + K @ y
+        
+        state[0] = state[0] % self.track_length
         
         P = (np.eye(4) - K @ self.H) @ P_pred
         
         return state, P
         
-    def _normalize_s(self, s_diff: float) -> float:
-        if s_diff > self.track_length / 2:
-            return s_diff - self.track_length
-        elif s_diff < -self.track_length / 2:
-            return s_diff + self.track_length
-        return s_diff
+    def _normalize_s_residual(self, s_residual: float) -> float:
+        if s_residual > self.track_length / 2:
+            return s_residual - self.track_length
+        elif s_residual < -self.track_length / 2:
+            return s_residual + self.track_length
+        return s_residual
 
 
 class StaticDynamicClassifier:
-    def __init__(self, window_size: int = 10, 
-                 static_threshold: float = 0.15,
-                 vote_threshold: int = 7):
-        self.window_size = window_size
-        self.static_threshold = static_threshold
-        self.vote_threshold = vote_threshold
+    def __init__(self, buffer_size: int = 10, std_threshold: float = 0.17):
+        self.buffer_size = buffer_size
+        self.std_threshold = std_threshold
         
-    def classify(self, position_history: list) -> bool:
-        if len(position_history) < self.window_size:
+    def classify(self, position_buffer: List[Tuple[float, float]]) -> bool:
+        if len(position_buffer) < self.buffer_size:
             return False
             
-        recent_positions = np.array([[p[0], p[1]] for p in position_history[-self.window_size:]])
+        recent_positions = np.array(position_buffer[-self.buffer_size:])
         
         std_s = np.std(recent_positions[:, 0])
         std_d = np.std(recent_positions[:, 1])
         
         total_std = np.sqrt(std_s**2 + std_d**2)
         
-        return total_std < self.static_threshold
+        return total_std < self.std_threshold
 
 
-class FrenetObjectTracker:
-    def __init__(self, dt: float = 0.1, max_distance: float = 2.0,
-                 max_age: int = 5, track_length: float = 100.0,
-                 vs_target: float = 5.0, los_distance: float = 10.0,
-                 is_circular_track: bool = False,
-                 **ekf_params):
+class OpponentTracker:
+    def __init__(self, dt: float = 0.1, track_length: float = 100.0, 
+                 max_association_dist: float = 2.0, max_age: int = 5,
+                 v_target_ratio: float = 0.6):
         self.dt = dt
-        self.max_distance = max_distance
-        self.max_age = max_age
         self.track_length = track_length
-        self.vs_target = vs_target
-        self.los_distance = los_distance
-        self.is_circular_track = is_circular_track
+        self.max_association_dist = max_association_dist
+        self.max_age = max_age
+        self.v_target_ratio = v_target_ratio
         
-        self.ekf = FrenetEKF(dt=dt, track_length=track_length, 
-                            is_circular_track=is_circular_track, **ekf_params)
+        self.ekf = OpponentEKF(dt=dt, track_length=track_length)
         self.classifier = StaticDynamicClassifier()
         
         self.tracks = {}
         self.next_id = 0
-        self.previous_detections = {}
         
-    def _initialize_track(self, s: float, d: float, 
-                         x: float, y: float, vs_init: float = 0.0, vd_init: float = 0.0) -> FrenetTrackedObject:
-        state = np.array([s, vs_init, d, vd_init])
+    def _initialize_track(self, s: float, d: float, vs: float, vd: float, 
+                         x: float, y: float) -> OpponentState:
+        state = np.array([s, vs, d, vd])
         
-        covariance = np.diag([0.1, 2.0, 0.1, 2.0])
+        P = np.diag([0.1, 2.0, 0.1, 2.0])
         
-        track = FrenetTrackedObject(
+        track = OpponentState(
             id=self.next_id,
-            s=s, vs=vs_init, d=d, vd=vd_init,
+            s=s, vs=vs, d=d, vd=vd,
             x=x, y=y,
             state=state,
-            covariance=covariance,
+            covariance=P,
             last_seen=time.time(),
             age=0,
-            position_history=[(s, d, time.time())]
+            position_buffer=[(s, d)]
         )
         
         self.next_id += 1
         return track
         
-    def _is_in_los(self, track: FrenetTrackedObject, ego_s: float) -> bool:
-        s_diff = abs(track.s - ego_s)
-        if self.is_circular_track:
-            s_diff = min(s_diff, self.track_length - s_diff)
-        return s_diff < self.los_distance
-        
-    def update(self, detections_frenet: list, ego_s: float = 0.0,
-               frenet_converter = None, ego_vs: float = 0.0, ego_vd: float = 0.0) -> list:
-        current_time = time.time()
+    def update(self, detections: List[Tuple[float, float, float, float, float, float]], 
+               ego_s: float = 0.0, ego_vs: float = 5.0, 
+               v_target_profile: Optional[np.ndarray] = None,
+               frenet_converter = None) -> List[OpponentState]:
         
         for track_id in list(self.tracks.keys()):
             track = self.tracks[track_id]
             
-            state_pred, P_pred = self.ekf.predict(track.state, track.covariance)
+            in_los = len(detections) > 0
+            
+            if in_los:
+                u = np.array([0.0, -track.d, -track.vd])
+            else:
+                if v_target_profile is not None:
+                    s_idx = int(track.s) % len(v_target_profile)
+                    v_target = v_target_profile[s_idx] * self.v_target_ratio
+                else:
+                    v_target = ego_vs * self.v_target_ratio
+                    
+                u = np.array([(v_target - track.vs), -track.d, -track.vd])
+            
+            state_pred, P_pred = self.ekf.predict(track.state, track.covariance, u, in_los)
             
             track.state = state_pred
             track.covariance = P_pred
@@ -206,15 +192,15 @@ class FrenetObjectTracker:
                 
             track.age += 1
             
-        associations = self._associate_detections(detections_frenet)
+        associations = self._associate_detections(detections)
         
         for track_id, det_idx in associations.items():
             track = self.tracks[track_id]
-            s, d, x, y = detections_frenet[det_idx]
+            s, d, vs, vd, x, y = detections[det_idx]
             
-            measurement = np.array([s, d])
+            z = np.array([s, vs, d, vd])
             
-            state_new, P_new = self.ekf.update(track.state, track.covariance, measurement)
+            state_new, P_new = self.ekf.update(track.state, track.covariance, z)
             
             track.state = state_new
             track.covariance = P_new
@@ -224,86 +210,61 @@ class FrenetObjectTracker:
             track.vd = state_new[3]
             track.x = x
             track.y = y
-            track.last_seen = current_time
+            track.last_seen = time.time()
             track.age = 0
             
-            abs_vs = track.vs + ego_vs
-            abs_vd = track.vd + ego_vd
-            
-            if frenet_converter is not None:
-                track.vx, track.vy = frenet_converter.frenet_velocity_to_cartesian(
-                    track.s, track.d, abs_vs, abs_vd
-                )
-            
-            track.position_history.append((s, d, current_time))
-            if len(track.position_history) > 20:
-                track.position_history.pop(0)
+            track.position_buffer.append((s, d))
+            if len(track.position_buffer) > 20:
+                track.position_buffer.pop(0)
                 
-            track.is_static = self.classifier.classify(track.position_history)
+            track.is_static = self.classifier.classify(track.position_buffer)
             
-        unassociated = [i for i in range(len(detections_frenet)) 
-                       if i not in associations.values()]
-        for det_idx in unassociated:
-            s, d, x, y = detections_frenet[det_idx]
-            
-            vs_init, vd_init = 0.0, 0.0
-            best_match_dist = float('inf')
-            
-            for prev_key, (prev_s, prev_d, prev_time) in self.previous_detections.items():
-                dist = np.sqrt((s - prev_s)**2 + (d - prev_d)**2)
-                dt = current_time - prev_time
-                
-                if dist < 1.0 and dt > 0.01 and dt < 0.5 and dist < best_match_dist:
-                    best_match_dist = dist
-                    vs_init = (s - prev_s) / dt
-                    vd_init = (d - prev_d) / dt
-            
-            new_track = self._initialize_track(s, d, x, y, vs_init, vd_init)
+        unassociated_detections = [i for i in range(len(detections)) 
+                                   if i not in associations.values()]
+        
+        for det_idx in unassociated_detections:
+            s, d, vs, vd, x, y = detections[det_idx]
+            new_track = self._initialize_track(s, d, vs, vd, x, y)
             self.tracks[new_track.id] = new_track
             
-            self.previous_detections[f"{s:.2f}_{d:.2f}"] = (s, d, current_time)
-        
-        self.previous_detections = {
-            k: v for k, v in self.previous_detections.items() 
-            if current_time - v[2] < 1.0
-        }
-            
-        for track_id in list(self.tracks.keys()):
-            if self.tracks[track_id].age > self.max_age:
-                del self.tracks[track_id]
+        to_remove = [tid for tid, track in self.tracks.items() 
+                    if track.age > self.max_age]
+        for tid in to_remove:
+            del self.tracks[tid]
                 
         return list(self.tracks.values())
         
-    def _associate_detections(self, detections_frenet: list) -> dict:
-        if not self.tracks or not detections_frenet:
+    def _associate_detections(self, detections: List[Tuple[float, float, float, float, float, float]]) -> dict:
+        if not self.tracks or not detections:
             return {}
             
         track_ids = list(self.tracks.keys())
-        track_positions = np.array([[self.tracks[tid].s, self.tracks[tid].d] 
-                                    for tid in track_ids])
-        detection_positions = np.array([[det[0], det[1]] for det in detections_frenet])
         
-        cost_matrix = np.zeros((len(track_ids), len(detections_frenet)))
-        for i, track_pos in enumerate(track_positions):
-            for j, det_pos in enumerate(detection_positions):
-                s_diff = abs(track_pos[0] - det_pos[0])
-                if self.is_circular_track:
-                    s_diff = min(s_diff, self.track_length - s_diff)
+        cost_matrix = np.zeros((len(track_ids), len(detections)))
+        for i, track_id in enumerate(track_ids):
+            track = self.tracks[track_id]
+            for j, det in enumerate(detections):
+                s_det, d_det = det[0], det[1]
                 
-                d_diff = abs(track_pos[1] - det_pos[1])
+                s_diff = abs(track.s - s_det)
+                s_diff = min(s_diff, self.track_length - s_diff)
+                
+                d_diff = abs(track.d - d_det)
+                
                 cost_matrix[i, j] = np.sqrt(s_diff**2 + d_diff**2)
                 
         associations = {}
         
-        for _ in range(min(len(track_ids), len(detections_frenet))):
+        for _ in range(min(len(track_ids), len(detections))):
             if cost_matrix.size == 0:
                 break
                 
             min_idx = np.unravel_index(np.argmin(cost_matrix), cost_matrix.shape)
             track_idx, det_idx = min_idx
             
-            if cost_matrix[track_idx, det_idx] < self.max_distance:
+            if cost_matrix[track_idx, det_idx] < self.max_association_dist:
                 associations[track_ids[track_idx]] = det_idx
+                
                 cost_matrix[track_idx, :] = np.inf
                 cost_matrix[:, det_idx] = np.inf
             else:
@@ -311,13 +272,22 @@ class FrenetObjectTracker:
                 
         return associations
         
-    def get_active_tracks(self) -> list:
-        return [track for track in self.tracks.values() if track.age < 2]
-        
-    def get_dynamic_tracks(self) -> list:
+    def get_dynamic_opponents(self) -> List[OpponentState]:
         return [track for track in self.tracks.values() 
-                if not track.is_static and track.age < 2]
+                if not track.is_static and track.age < 3]
     
-    def update_track_length(self, track_length: float):
-        self.track_length = track_length
-        self.ekf.track_length = track_length
+    def get_closest_opponent(self, ego_s: float) -> Optional[OpponentState]:
+        dynamic_opponents = self.get_dynamic_opponents()
+        if not dynamic_opponents:
+            return None
+            
+        min_dist = float('inf')
+        closest = None
+        for opp in dynamic_opponents:
+            s_diff = abs(opp.s - ego_s)
+            s_diff = min(s_diff, self.track_length - s_diff)
+            if s_diff < min_dist:
+                min_dist = s_diff
+                closest = opp
+                
+        return closest

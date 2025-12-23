@@ -7,12 +7,13 @@ from nav_msgs.msg import OccupancyGrid, Path, Odometry
 from visualization_msgs.msg import Marker, MarkerArray
 from geometry_msgs.msg import Point
 import numpy as np
+import time
 
 from lidar_obj_detection.adaptive_breakpoint import AdaptiveBreakpoint
 from lidar_obj_detection.filters import AdaptiveLidarFilter, BoundaryFilter
 from lidar_obj_detection.frenet_utils import FrenetConverter, FrenetBoundaryFilter
 from lidar_obj_detection.rectangle_fitting import RectangleFitter
-from lidar_obj_detection.frenet_tracking import FrenetObjectTracker
+from lidar_obj_detection.frenet_tracking import OpponentTracker
 from lidar_obj_detection.utils import filter_by_range
 
 
@@ -99,36 +100,23 @@ class ObjectDetectionNode(Node):
             track_width=self.get_parameter('track_width').value
         )
         
-        ekf_params = {
-            'p_vs': self.get_parameter('p_vs').value,
-            'p_d': self.get_parameter('p_d').value,
-            'p_vd': self.get_parameter('p_vd').value,
-            'process_noise_s': self.get_parameter('process_noise_s').value,
-            'process_noise_vs': self.get_parameter('process_noise_vs').value,
-            'process_noise_d': self.get_parameter('process_noise_d').value,
-            'process_noise_vd': self.get_parameter('process_noise_vd').value,
-            'meas_noise_s': self.get_parameter('meas_noise_s').value,
-            'meas_noise_vs': self.get_parameter('meas_noise_vs').value,
-            'meas_noise_d': self.get_parameter('meas_noise_d').value,
-            'meas_noise_vd': self.get_parameter('meas_noise_vd').value,
-        }
-        
         self.ego_s = 0.0
         self.ego_vs = 0.0 
         self.ego_vd = 0.0 
         self.ego_position_updated = False
         self.is_circular_track = True
         
-        self.tracker = FrenetObjectTracker(
+        self.tracker = OpponentTracker(
             dt=self.get_parameter('tracker_dt').value,
-            max_distance=self.get_parameter('tracker_max_distance').value,
-            max_age=self.get_parameter('tracker_max_age').value,
             track_length=self.get_parameter('track_length').value,
-            vs_target=self.get_parameter('vs_target').value,
-            los_distance=self.get_parameter('los_distance').value,
-            is_circular_track=self.is_circular_track,
-            **ekf_params
+            max_association_dist=self.get_parameter('tracker_max_distance').value,
+            max_age=self.get_parameter('tracker_max_age').value,
+            v_target_ratio=0.6
         )
+        
+        self.previous_detections = {}
+        self.v_target_profile = None
+
         
         self.scan_sub = self.create_subscription(
             LaserScan, 'scan', self.scan_callback, 10
@@ -161,17 +149,17 @@ class ObjectDetectionNode(Node):
         position = msg.pose.pose.position
         velocity = msg.twist.twist.linear
         
+        self.ego_vx = velocity.x
+        self.ego_vy = velocity.y
+        
         if self.frenet_converter.raceline_s is not None:
             try:
                 s, d = self.frenet_converter.cartesian_to_frenet(position.x, position.y)
                 self.ego_s = s
                 
-                self.ego_vs, self.ego_vd = self.frenet_converter.cartesian_velocity_to_frenet(
-                    s, d, velocity.x, velocity.y
-                )
-                
                 if not self.ego_position_updated:
-                    self.get_logger().info(f'Ego position initialized: s={s:.2f}, d={d:.2f}, vs={self.ego_vs:.2f}m/s')
+                    ego_speed = np.sqrt(self.ego_vx**2 + self.ego_vy**2)
+                    self.get_logger().info(f'Ego position initialized: s={s:.2f}, d={d:.2f}, speed={ego_speed:.2f}m/s')
                     self.ego_position_updated = True
             except Exception as e:
                 self.get_logger().error(f'Failed to convert ego position to Frenet: {e}')
@@ -205,9 +193,9 @@ class ObjectDetectionNode(Node):
             np.array(s_coords), np.array(x_coords), np.array(y_coords)
         )
         
-        # Update tracker's track length for proper s-coordinate wrapping
         if self.is_circular_track:
-            self.tracker.update_track_length(s)
+            self.tracker.track_length = s
+            self.tracker.ekf.track_length = s
             self.get_logger().info(f'Raceline updated with {len(msg.poses)} points, circular track length: {s:.2f}m')
         else:
             self.get_logger().info(f'Raceline updated with {len(msg.poses)} points, total length: {s:.2f}m')
@@ -259,22 +247,41 @@ class ObjectDetectionNode(Node):
             return
         
         detections_frenet = []
+        current_time = time.time()
+        
         for bbox in bounding_boxes:
             if self.frenet_converter.raceline_s is not None:
                 try:
                     s, d = self.frenet_converter.cartesian_to_frenet(bbox.center_x, bbox.center_y)
-                    detections_frenet.append((s, d, bbox.center_x, bbox.center_y))
+                    
+                    vs, vd = 0.0, 0.0
+                    det_key = f"{bbox.center_x:.2f}_{bbox.center_y:.2f}"
+                    
+                    if det_key in self.previous_detections:
+                        prev_s, prev_d, prev_time = self.previous_detections[det_key]
+                        dt = current_time - prev_time
+                        if dt > 0.01 and dt < 0.5:
+                            vs = (s - prev_s) / dt
+                            vd = (d - prev_d) / dt
+                    
+                    self.previous_detections[det_key] = (s, d, current_time)
+                    
+                    detections_frenet.append((s, d, vs, vd, bbox.center_x, bbox.center_y))
                 except Exception as e:
                     self.get_logger().warn(f'Failed to convert detection to Frenet: {e}', throttle_duration_sec=5.0)
-                    detections_frenet.append((0.0, 0.0, bbox.center_x, bbox.center_y))
-            else:
-                detections_frenet.append((0.0, 0.0, bbox.center_x, bbox.center_y))
+            
+        self.previous_detections = {
+            k: v for k, v in self.previous_detections.items() 
+            if current_time - v[2] < 1.0
+        }
         
-        # Only update tracker if ego position has been properly initialized
         if self.ego_position_updated or self.frenet_converter.raceline_s is None:
             tracked_objects = self.tracker.update(
-                detections_frenet, self.ego_s, self.frenet_converter,
-                ego_vs=self.ego_vs, ego_vd=self.ego_vd
+                detections_frenet, 
+                ego_s=self.ego_s, 
+                ego_vs=np.sqrt(self.ego_vx**2 + self.ego_vy**2),
+                v_target_profile=self.v_target_profile,
+                frenet_converter=self.frenet_converter
             )
         else:
             self.get_logger().warn('Skipping tracking update: ego position not yet initialized', throttle_duration_sec=2.0)
@@ -344,10 +351,8 @@ class ObjectDetectionNode(Node):
             if obj.age > 1:
                 continue
             
-            # Compute velocity magnitude for display
-            speed = obj.get_speed()
+            speed = np.sqrt(obj.vs**2 + obj.vd**2)
             
-            # Skip visualization for very slow objects (likely static)
             if speed < 0.1:
                 continue
                 
@@ -364,12 +369,25 @@ class ObjectDetectionNode(Node):
             start.y = float(obj.y)
             start.z = 0.0
             
-            # Use Cartesian velocities for accurate visualization
-            # Scale by 0.5 seconds for visualization length
-            end = Point()
-            end.x = float(obj.x + obj.vx * 0.5)
-            end.y = float(obj.y + obj.vy * 0.5)
-            end.z = 0.0
+            if self.frenet_converter.raceline_s is not None:
+                try:
+                    abs_vx, abs_vy = self.frenet_converter.frenet_velocity_to_cartesian(
+                        obj.s, obj.d, obj.vs, obj.vd
+                    )
+                    end = Point()
+                    end.x = float(obj.x + abs_vx * 0.5)
+                    end.y = float(obj.y + abs_vy * 0.5)
+                    end.z = 0.0
+                except:
+                    end = Point()
+                    end.x = float(obj.x + 0.5)
+                    end.y = float(obj.y)
+                    end.z = 0.0
+            else:
+                end = Point()
+                end.x = float(obj.x + 0.5)
+                end.y = float(obj.y)
+                end.z = 0.0
             
             arrow_marker.points = [start, end]
             
