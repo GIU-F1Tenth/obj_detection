@@ -3,7 +3,7 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
-from nav_msgs.msg import OccupancyGrid, Path
+from nav_msgs.msg import OccupancyGrid, Path, Odometry
 from visualization_msgs.msg import Marker, MarkerArray
 from geometry_msgs.msg import Point
 import numpy as np
@@ -113,6 +113,10 @@ class ObjectDetectionNode(Node):
             'meas_noise_vd': self.get_parameter('meas_noise_vd').value,
         }
         
+        self.ego_s = 0.0
+        self.ego_position_updated = False
+        self.is_circular_track = True
+        
         self.tracker = FrenetObjectTracker(
             dt=self.get_parameter('tracker_dt').value,
             max_distance=self.get_parameter('tracker_max_distance').value,
@@ -120,10 +124,9 @@ class ObjectDetectionNode(Node):
             track_length=self.get_parameter('track_length').value,
             vs_target=self.get_parameter('vs_target').value,
             los_distance=self.get_parameter('los_distance').value,
+            is_circular_track=self.is_circular_track,
             **ekf_params
         )
-        
-        self.ego_s = 0.0
         
         self.scan_sub = self.create_subscription(
             LaserScan, 'scan', self.scan_callback, 10
@@ -134,7 +137,11 @@ class ObjectDetectionNode(Node):
         )
         
         self.raceline_sub = self.create_subscription(
-            Path, 'raceline', self.raceline_callback, 10
+            Path, 'pp_path', self.raceline_callback, 10
+        )
+        
+        self.ego_odom_sub = self.create_subscription(
+            Odometry, 'ego_racecar/odom', self.ego_odom_callback, 10
         )
         
         self.marker_pub = self.create_publisher(MarkerArray, 'detected_objects', 10)
@@ -147,7 +154,23 @@ class ObjectDetectionNode(Node):
         if self.use_boundary_filter:
             self.boundary_filter.update_map(msg)
             self.get_logger().info('Map updated for boundary filtering')
-            
+    
+    def ego_odom_callback(self, msg: Odometry):
+        position = msg.pose.pose.position
+        if self.frenet_converter.raceline_s is not None:
+            try:
+                s, d = self.frenet_converter.cartesian_to_frenet(position.x, position.y)
+                self.ego_s = s
+                
+                if not self.ego_position_updated:
+                    self.get_logger().info(f'Ego position initialized: s={s:.2f}, d={d:.2f}')
+                    self.ego_position_updated = True
+            except Exception as e:
+                self.get_logger().error(f'Failed to convert ego position to Frenet: {e}')
+        else:
+            if not self.ego_position_updated:
+                self.get_logger().warn('Raceline not yet available for ego position conversion', throttle_duration_sec=5.0)
+        
     def raceline_callback(self, msg: Path):
         if len(msg.poses) < 2:
             return
@@ -173,7 +196,13 @@ class ObjectDetectionNode(Node):
         self.frenet_converter.update_raceline(
             np.array(s_coords), np.array(x_coords), np.array(y_coords)
         )
-        self.get_logger().info(f'Raceline updated with {len(msg.poses)} points')
+        
+        # Update tracker's track length for proper s-coordinate wrapping
+        if self.is_circular_track:
+            self.tracker.update_track_length(s)
+            self.get_logger().info(f'Raceline updated with {len(msg.poses)} points, circular track length: {s:.2f}m')
+        else:
+            self.get_logger().info(f'Raceline updated with {len(msg.poses)} points, total length: {s:.2f}m')
             
     def scan_callback(self, msg: LaserScan):
         ranges = np.array(msg.ranges)
@@ -224,14 +253,23 @@ class ObjectDetectionNode(Node):
         detections_frenet = []
         for bbox in bounding_boxes:
             if self.frenet_converter.raceline_s is not None:
-                s, d = self.frenet_converter.cartesian_to_frenet(bbox.center_x, bbox.center_y)
-                detections_frenet.append((s, d, bbox.center_x, bbox.center_y))
+                try:
+                    s, d = self.frenet_converter.cartesian_to_frenet(bbox.center_x, bbox.center_y)
+                    detections_frenet.append((s, d, bbox.center_x, bbox.center_y))
+                except Exception as e:
+                    self.get_logger().warn(f'Failed to convert detection to Frenet: {e}', throttle_duration_sec=5.0)
+                    detections_frenet.append((0.0, 0.0, bbox.center_x, bbox.center_y))
             else:
                 detections_frenet.append((0.0, 0.0, bbox.center_x, bbox.center_y))
         
-        tracked_objects = self.tracker.update(
-            detections_frenet, self.ego_s, self.frenet_converter
-        )
+        # Only update tracker if ego position has been properly initialized
+        if self.ego_position_updated or self.frenet_converter.raceline_s is None:
+            tracked_objects = self.tracker.update(
+                detections_frenet, self.ego_s, self.frenet_converter
+            )
+        else:
+            self.get_logger().warn('Skipping tracking update: ego position not yet initialized', throttle_duration_sec=2.0)
+            tracked_objects = []
         
         self.publish_markers(bounding_boxes, tracked_objects, msg.header.frame_id)
         
@@ -296,6 +334,13 @@ class ObjectDetectionNode(Node):
         for obj in tracked_objects:
             if obj.age > 1:
                 continue
+            
+            # Compute velocity magnitude for display
+            speed = obj.get_speed()
+            
+            # Skip visualization for very slow objects (likely static)
+            if speed < 0.1:
+                continue
                 
             arrow_marker = Marker()
             arrow_marker.header.frame_id = frame_id
@@ -310,24 +355,18 @@ class ObjectDetectionNode(Node):
             start.y = float(obj.y)
             start.z = 0.0
             
-            if self.frenet_converter.raceline_s is not None:
-                end_x, end_y = self.frenet_converter.frenet_to_cartesian(
-                    obj.s + obj.vs * 0.5, obj.d + obj.vd * 0.5
-                )
-            else:
-                end_x = obj.x
-                end_y = obj.y
-            
+            # Use Cartesian velocities for accurate visualization
+            # Scale by 0.5 seconds for visualization length
             end = Point()
-            end.x = float(end_x)
-            end.y = float(end_y)
+            end.x = float(obj.x + obj.vx * 0.5)
+            end.y = float(obj.y + obj.vy * 0.5)
             end.z = 0.0
             
             arrow_marker.points = [start, end]
             
-            arrow_marker.scale.x = 0.1
-            arrow_marker.scale.y = 0.15
-            arrow_marker.scale.z = 0.2
+            arrow_marker.scale.x = 0.1   # Shaft diameter
+            arrow_marker.scale.y = 0.15  # Head diameter
+            arrow_marker.scale.z = 0.2   # Head length
             
             if obj.is_static:
                 arrow_marker.color.r = 1.0
@@ -339,7 +378,29 @@ class ObjectDetectionNode(Node):
                 arrow_marker.color.b = 1.0
             arrow_marker.color.a = 1.0
             
+            # Add text marker with velocity info
+            text_marker = Marker()
+            text_marker.header.frame_id = frame_id
+            text_marker.header.stamp = self.get_clock().now().to_msg()
+            text_marker.ns = 'velocity_text'
+            text_marker.id = obj.id
+            text_marker.type = Marker.TEXT_VIEW_FACING
+            text_marker.action = Marker.ADD
+            
+            text_marker.pose.position.x = float(obj.x)
+            text_marker.pose.position.y = float(obj.y)
+            text_marker.pose.position.z = 0.5
+            
+            text_marker.text = f"ID:{obj.id} {speed:.2f}m/s"
+            
+            text_marker.scale.z = 0.3
+            text_marker.color.r = 1.0
+            text_marker.color.g = 1.0
+            text_marker.color.b = 1.0
+            text_marker.color.a = 1.0
+            
             velocity_markers.markers.append(arrow_marker)
+            velocity_markers.markers.append(text_marker)
             
         self.marker_pub.publish(cluster_markers)
         self.bbox_pub.publish(bbox_markers)
