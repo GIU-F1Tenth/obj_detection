@@ -114,6 +114,8 @@ class ObjectDetectionNode(Node):
         }
         
         self.ego_s = 0.0
+        self.ego_vs = 0.0 
+        self.ego_vd = 0.0 
         self.ego_position_updated = False
         self.is_circular_track = True
         
@@ -157,13 +159,19 @@ class ObjectDetectionNode(Node):
     
     def ego_odom_callback(self, msg: Odometry):
         position = msg.pose.pose.position
+        velocity = msg.twist.twist.linear
+        
         if self.frenet_converter.raceline_s is not None:
             try:
                 s, d = self.frenet_converter.cartesian_to_frenet(position.x, position.y)
                 self.ego_s = s
                 
+                self.ego_vs, self.ego_vd = self.frenet_converter.cartesian_velocity_to_frenet(
+                    s, d, velocity.x, velocity.y
+                )
+                
                 if not self.ego_position_updated:
-                    self.get_logger().info(f'Ego position initialized: s={s:.2f}, d={d:.2f}')
+                    self.get_logger().info(f'Ego position initialized: s={s:.2f}, d={d:.2f}, vs={self.ego_vs:.2f}m/s')
                     self.ego_position_updated = True
             except Exception as e:
                 self.get_logger().error(f'Failed to convert ego position to Frenet: {e}')
@@ -265,7 +273,8 @@ class ObjectDetectionNode(Node):
         # Only update tracker if ego position has been properly initialized
         if self.ego_position_updated or self.frenet_converter.raceline_s is None:
             tracked_objects = self.tracker.update(
-                detections_frenet, self.ego_s, self.frenet_converter
+                detections_frenet, self.ego_s, self.frenet_converter,
+                ego_vs=self.ego_vs, ego_vd=self.ego_vd
             )
         else:
             self.get_logger().warn('Skipping tracking update: ego position not yet initialized', throttle_duration_sec=2.0)

@@ -186,7 +186,7 @@ class FrenetObjectTracker:
         return s_diff < self.los_distance
         
     def update(self, detections_frenet: list, ego_s: float = 0.0,
-               frenet_converter = None) -> list:
+               frenet_converter = None, ego_vs: float = 0.0, ego_vd: float = 0.0) -> list:
         current_time = time.time()
         
         for track_id in list(self.tracks.keys()):
@@ -227,9 +227,12 @@ class FrenetObjectTracker:
             track.last_seen = current_time
             track.age = 0
             
+            abs_vs = track.vs + ego_vs
+            abs_vd = track.vd + ego_vd
+            
             if frenet_converter is not None:
                 track.vx, track.vy = frenet_converter.frenet_velocity_to_cartesian(
-                    track.s, track.d, track.vs, track.vd
+                    track.s, track.d, abs_vs, abs_vd
                 )
             
             track.position_history.append((s, d, current_time))
