@@ -3,7 +3,7 @@ object_detection:
     use_ekf_filter: true
     use_boundary_filter: true
     use_adaptive_breakpoint: true
-    use_frenet_filtering: true
+    use_frenet_filtering: false
     
     min_range: 0.2
     max_range: 10.0
