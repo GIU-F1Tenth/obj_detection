@@ -1,0 +1,57 @@
+object_detection:
+  ros__parameters:
+    use_ekf_filter: true
+    use_boundary_filter: true
+    use_adaptive_breakpoint: true
+    use_frenet_filtering: false
+    
+    min_range: 0.2
+    max_range: 10.0
+    
+    breakpoint_base_threshold: 0.3
+    breakpoint_adaptive_coeff: 0.05
+    min_cluster_points: 5
+    
+    cluster_distance: 0.3  
+    min_cluster_size: 20    
+    
+    adaptive_eps: 0.3
+    adaptive_factor: 0.3
+    
+    inflation_radius: 4.0
+    occupancy_threshold: 50
+    boundary_check_radius: 2
+    
+    min_bbox_width: 0.15
+    max_bbox_width: 1.5
+    min_bbox_height: 0.15
+    max_bbox_height: 1.5
+    
+    track_width: 2.0
+    left_boundary_inflation: 0.5
+    right_boundary_inflation: 0.5
+    
+    tracker_dt: 0.1
+    tracker_max_distance: 2.0  
+    tracker_max_age: 5
+    track_length: 100.0
+    vs_target: 5.0
+    los_distance: 10.0
+    
+    p_vs: 0.5
+    p_d: 0.8
+    p_vd: 0.8
+    
+    process_noise_s: 0.1
+    process_noise_vs: 0.5
+    process_noise_d: 0.1
+    process_noise_vd: 0.5
+    
+    meas_noise_s: 0.2
+    meas_noise_vs: 0.5
+    meas_noise_d: 0.2
+    meas_noise_vd: 0.5
+    
+    static_threshold: 0.1
+    vote_threshold: 7
+    position_history_size: 10      
