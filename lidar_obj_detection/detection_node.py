@@ -15,6 +15,8 @@ from lidar_obj_detection.frenet_utils import FrenetConverter, FrenetBoundaryFilt
 from lidar_obj_detection.rectangle_fitting import RectangleFitter
 from lidar_obj_detection.frenet_tracking import OpponentTracker
 from lidar_obj_detection.utils import filter_by_range
+from lidar_obj_detection.utils import points_to_point_list
+
 
 
 class ObjectDetectionNode(Node):
@@ -102,7 +104,8 @@ class ObjectDetectionNode(Node):
         
         self.ego_s = 0.0
         self.ego_vs = 0.0 
-        self.ego_vd = 0.0 
+        self.ego_vx = 0.0
+        self.ego_vy = 0.0 
         self.ego_position_updated = False
         self.is_circular_track = True
         
@@ -317,7 +320,6 @@ class ObjectDetectionNode(Node):
             points_marker.color.b = 0.0
             points_marker.color.a = 0.6
             
-            from lidar_obj_detection.utils import points_to_point_list
             points_marker.points = points_to_point_list(bbox.points)
             cluster_markers.markers.append(points_marker)
             
