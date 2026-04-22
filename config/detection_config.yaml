@@ -1,57 +1,36 @@
 object_detection:
   ros__parameters:
-    use_ekf_filter: true
-    use_boundary_filter: true
-    use_adaptive_breakpoint: true
-    use_frenet_filtering: false
+    use_ekf_filter: true                        # Enables scan outlier smoothing; true removes spiky noise but can soften small obstacle detail, false keeps raw returns.
+    use_boundary_filter: true                   # Enables occupancy-map boundary rejection; true removes wall/edge hits more aggressively, false keeps more near-boundary detections.
+    use_adaptive_breakpoint: true               # Enables adaptive breakpoint clustering; true splits objects by range-aware gaps, false treats the whole scan as one cluster.
+    use_frenet_filtering: true                  # Enables track-boundary filtering in Frenet space; true rejects detections near/outside track edges, false keeps them.
     
-    min_range: 0.2
-    max_range: 10.0
+    min_range: 0.2                              # Minimum accepted lidar range in meters; increasing it drops close objects, decreasing it keeps more near-field returns and noise.
+    max_range: 10.0                             # Maximum accepted lidar range in meters; increasing it keeps farther objects and more distant clutter, decreasing it limits detections to nearer targets.
     
-    breakpoint_base_threshold: 0.3
-    breakpoint_adaptive_coeff: 0.05
-    min_cluster_points: 5
+    breakpoint_base_threshold: 0.3              # Base gap needed to split adjacent points into different clusters; increasing it merges more points, decreasing it creates more splits.
+    breakpoint_adaptive_coeff: 0.05             # Extra gap allowance that grows with range; increasing it merges distant points more easily, decreasing it splits distant objects sooner.
+    min_cluster_points: 5                       # Minimum points required to keep a cluster; increasing it removes small/sparse detections, decreasing it keeps smaller but noisier clusters.
     
-    cluster_distance: 0.3  
-    min_cluster_size: 20    
+    inflation_radius: 4.0                       # Inflates occupied map cells before filtering; increasing it rejects detections farther from walls, decreasing it preserves more edge-adjacent detections.
+    occupancy_threshold: 50                     # Map value above which a cell counts as occupied; increasing it marks fewer cells as obstacles, decreasing it marks more cells as obstacles.
+    boundary_check_radius: 2                    # Grid-cell neighborhood checked around each point for boundary contact; increasing it filters more nearby-wall points, decreasing it is less strict.
     
-    adaptive_eps: 0.3
-    adaptive_factor: 0.3
+    min_bbox_width: 0.15                        # Minimum fitted box width in meters; increasing it rejects thin detections, decreasing it accepts narrower objects and more noise.
+    max_bbox_width: 1.5                         # Maximum fitted box width in meters; increasing it accepts wider detections, decreasing it rejects large merged clusters sooner.
+    min_bbox_height: 0.15                       # Minimum fitted box height in meters; increasing it rejects short/small detections, decreasing it accepts smaller objects and more clutter.
+    max_bbox_height: 1.5                        # Maximum fitted box height in meters; increasing it accepts taller detections, decreasing it rejects oversized clusters sooner.
     
-    inflation_radius: 4.0
-    occupancy_threshold: 50
-    boundary_check_radius: 2
+    track_width: 2.0                            # Assumed track width for Frenet filtering; increasing it allows detections farther from centerline, decreasing it removes more side detections.
+    left_boundary_inflation: 0.5                # Safety margin subtracted from the left track edge; increasing it rejects more detections near the left boundary, decreasing it allows more.
+    right_boundary_inflation: 0.5               # Safety margin added from the right track edge; increasing it rejects more detections near the right boundary, decreasing it allows more.
     
-    min_bbox_width: 0.15
-    max_bbox_width: 1.5
-    min_bbox_height: 0.15
-    max_bbox_height: 1.5
-    
-    track_width: 2.0
-    left_boundary_inflation: 0.5
-    right_boundary_inflation: 0.5
-    
-    tracker_dt: 0.1
-    tracker_max_distance: 2.0  
-    tracker_max_age: 5
-    track_length: 100.0
-    vs_target: 5.0
-    los_distance: 10.0
-    
-    p_vs: 0.5
-    p_d: 0.8
-    p_vd: 0.8
-    
-    process_noise_s: 0.1
-    process_noise_vs: 0.5
-    process_noise_d: 0.1
-    process_noise_vd: 0.5
-    
-    meas_noise_s: 0.2
-    meas_noise_vs: 0.5
-    meas_noise_d: 0.2
-    meas_noise_vd: 0.5
-    
-    static_threshold: 0.1
-    vote_threshold: 7
-    position_history_size: 10      
+    tracker_dt: 0.1                             # Tracker prediction timestep in seconds; increasing it makes each motion prediction jump farther, decreasing it makes updates more incremental.
+    tracker_max_distance: 2.0                   # Maximum distance for matching a detection to an existing track; increasing it links detections more easily, decreasing it creates new tracks more often.
+    tracker_max_age: 5                          # Number of missed updates before a track is dropped; increasing it keeps stale tracks longer, decreasing it removes lost tracks faster.
+    track_length: 100.0                         # Track length used for Frenet wrap-around in tracking; increasing or decreasing it changes where longitudinal positions wrap on looped tracks.
+
+    scan_topic: '/scan'                         # ROS topic for lidar scans; changing it remaps the scan source and does not directly tune detection sensitivity.
+    map_topic: '/map'                           # ROS topic for the occupancy grid; changing it remaps boundary-filter input and only affects detection through the provided map.
+    raceline_topic: '/pp_path'                  # ROS topic for the raceline path; changing it remaps Frenet conversion input and only affects detection through that path.
+    ego_odom_topic: '/ego_racecar/odom'         # ROS topic for ego odometry; changing it remaps tracker ego-motion input and does not directly tune raw detection.

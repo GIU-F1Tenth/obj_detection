@@ -49,19 +49,10 @@ class ObjectDetectionNode(Node):
                 ('tracker_max_distance', 2.0),
                 ('tracker_max_age', 5),
                 ('track_length', 100.0),
-                ('vs_target', 5.0),
-                ('los_distance', 10.0),
-                ('p_vs', 0.5),
-                ('p_d', 0.8),
-                ('p_vd', 0.8),
-                ('process_noise_s', 0.1),
-                ('process_noise_vs', 0.5),
-                ('process_noise_d', 0.1),
-                ('process_noise_vd', 0.5),
-                ('meas_noise_s', 0.2),
-                ('meas_noise_vs', 0.5),
-                ('meas_noise_d', 0.2),
-                ('meas_noise_vd', 0.5),
+                ('scan_topic', '/scan'),
+                ('map_topic', '/map'),
+                ('raceline_topic', '/pp_path'),
+                ('ego_odom_topic', '/ego_racecar/odom')
             ]
         )
         
@@ -120,21 +111,25 @@ class ObjectDetectionNode(Node):
         self.previous_detections = {}
         self.v_target_profile = None
 
+        self.scan_topic = self.get_parameter('scan_topic').value
+        self.map_topic = self.get_parameter('map_topic').value
+        self.raceline_topic = self.get_parameter('raceline_topic').value
+        self.ego_odom_topic = self.get_parameter('ego_odom_topic').value
         
         self.scan_sub = self.create_subscription(
-            LaserScan, 'scan', self.scan_callback, 10
+            LaserScan, self.scan_topic, self.scan_callback, 10
         )
         
         self.map_sub = self.create_subscription(
-            OccupancyGrid, 'map', self.map_callback, 10
+            OccupancyGrid, self.map_topic, self.map_callback, 10
         )
         
         self.raceline_sub = self.create_subscription(
-            Path, 'pp_path', self.raceline_callback, 10
+            Path, self.raceline_topic, self.raceline_callback, 10
         )
         
         self.ego_odom_sub = self.create_subscription(
-            Odometry, 'ego_racecar/odom', self.ego_odom_callback, 10
+            Odometry, self.ego_odom_topic, self.ego_odom_callback, 10
         )
         
         self.marker_pub = self.create_publisher(MarkerArray, 'detected_objects', 10)
