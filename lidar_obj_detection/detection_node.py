@@ -51,9 +51,8 @@ class ObjectDetectionNode(Node):
                 ("scan_topic", "/scan"),
                 ("map_topic", "/map"),
                 ("raceline_topic", "/pp_path"),
-                ("ego_odom_topic", "/ego_racecar/odom")(
-                    "detected_objects_topic", "/detected_objects"
-                ),
+                ("ego_odom_topic", "/ego_racecar/odom"),
+                ("detected_objects_topic", "/detected_objects"),
                 ("object_bboxes_topic", "/object_bboxes"),
                 ("object_velocities_topic", "/object_velocities"),
             ],
