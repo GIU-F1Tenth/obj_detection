@@ -147,9 +147,9 @@ class ObjectDetectionNode(Node):
             MarkerArray, self.detected_objects_topic, 10
         )
         self.bbox_pub = self.create_publisher(MarkerArray, self.object_bboxes_topic, 10)
-        self.velocity_marker_pub = self.create_publisher(
-            MarkerArray, self.object_velocities_topic, 10
-        )
+        # self.velocity_marker_pub = self.create_publisher(
+        #     MarkerArray, self.object_velocities_topic, 10
+        # )
 
         self.get_logger().info("Object Detection Node initialized")
 
@@ -466,7 +466,7 @@ class ObjectDetectionNode(Node):
 
         self.marker_pub.publish(cluster_markers)
         self.bbox_pub.publish(bbox_markers)
-        self.velocity_marker_pub.publish(velocity_markers)
+        # self.velocity_marker_pub.publish(velocity_markers)
 
 
 def main(args=None):
