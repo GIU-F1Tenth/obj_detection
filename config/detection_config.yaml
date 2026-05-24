@@ -35,5 +35,6 @@ object_detection:
     raceline_topic: '/pp_path'                  
     ego_odom_topic: '/ego_racecar/odom'         
     detected_objects_topic: '/detected_objects' 
-    object_bboxes_topic: '/object_bboxes'        
+    object_bboxes_topic: '/object_bboxes'       
+    object_centers_topic: '/object_centers' 
     object_velocities_topic: '/object_velocities' 
