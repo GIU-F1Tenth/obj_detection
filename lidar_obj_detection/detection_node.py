@@ -54,6 +54,7 @@ class ObjectDetectionNode(Node):
                 ("ego_odom_topic", "/ego_racecar/odom"),
                 ("detected_objects_topic", "/detected_objects"),
                 ("object_bboxes_topic", "/object_bboxes"),
+                ("object_centers_topic", "/object_centers"),
                 ("object_velocities_topic", "/object_velocities"),
             ],
         )
@@ -126,6 +127,7 @@ class ObjectDetectionNode(Node):
         self.object_velocities_topic = self.get_parameter(
             "object_velocities_topic"
         ).value
+        self.object_centers_topic = self.get_parameter("object_centers_topic").value
 
         self.scan_sub = self.create_subscription(
             LaserScan, self.scan_topic, self.scan_callback, 10
@@ -147,6 +149,9 @@ class ObjectDetectionNode(Node):
             MarkerArray, self.detected_objects_topic, 10
         )
         self.bbox_pub = self.create_publisher(MarkerArray, self.object_bboxes_topic, 10)
+        self.object_centers_pub = self.create_publisher(
+            MarkerArray, self.object_centers_topic, 10
+        )
         # self.velocity_marker_pub = self.create_publisher(
         #     MarkerArray, self.object_velocities_topic, 10
         # )
@@ -464,8 +469,40 @@ class ObjectDetectionNode(Node):
             velocity_markers.markers.append(arrow_marker)
             velocity_markers.markers.append(text_marker)
 
+        centers = MarkerArray()
+
+        for obj in tracked_objects:
+            center_marker = Marker()
+            center_marker.header.frame_id = frame_id
+            center_marker.header.stamp = self.get_clock().now().to_msg()
+            center_marker.ns = "object_centers"
+            center_marker.id = obj.id
+            center_marker.type = Marker.SPHERE
+            center_marker.action = Marker.ADD
+
+            center_marker.pose.position.x = float(obj.x)
+            center_marker.pose.position.y = float(obj.y)
+            center_marker.pose.position.z = 0.1
+
+            center_marker.scale.x = 0.2
+            center_marker.scale.y = 0.2
+            center_marker.scale.z = 0.2
+
+            if obj.is_static:
+                center_marker.color.r = 1.0
+                center_marker.color.g = 1.0
+                center_marker.color.b = 0.0
+            else:
+                center_marker.color.r = 0.0
+                center_marker.color.g = 0.0
+                center_marker.color.b = 1.0
+            center_marker.color.a = 1.0
+
+            centers.markers.append(center_marker)
+
         self.marker_pub.publish(cluster_markers)
         self.bbox_pub.publish(bbox_markers)
+        self.object_centers_pub.publish(centers)
         # self.velocity_marker_pub.publish(velocity_markers)
 
 
