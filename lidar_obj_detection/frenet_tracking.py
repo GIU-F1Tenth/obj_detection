@@ -227,11 +227,21 @@ class OpponentTracker:
             new_track = self._initialize_track(s, d, vs, vd, x, y)
             self.tracks[new_track.id] = new_track
             
-        to_remove = [tid for tid, track in self.tracks.items() 
+        to_remove = [tid for tid, track in self.tracks.items()
                     if track.age > self.max_age]
         for tid in to_remove:
             del self.tracks[tid]
-                
+
+        if frenet_converter is not None:
+            for track in self.tracks.values():
+                try:
+                    track.vx, track.vy = frenet_converter.frenet_velocity_to_cartesian(
+                        track.s, track.d, track.vs, track.vd
+                    )
+                except Exception:
+                    track.vx = 0.0
+                    track.vy = 0.0
+
         return list(self.tracks.values())
         
     def _associate_detections(self, detections: List[Tuple[float, float, float, float, float, float]]) -> dict:
@@ -271,7 +281,109 @@ class OpponentTracker:
                 break
                 
         return associations
-        
+
+    def update_cartesian(
+        self,
+        detections: List[Tuple[float, float]],
+        velocity_smoothing: float = 0.5,
+    ) -> List[OpponentState]:
+        now = time.time()
+
+        for track_id in list(self.tracks.keys()):
+            track = self.tracks[track_id]
+            dt = now - track.last_seen
+            if 0.0 < dt < 1.0:
+                track.x = track.x + track.vx * dt
+                track.y = track.y + track.vy * dt
+            track.age += 1
+
+        associations = self._associate_detections_cartesian(detections)
+
+        for track_id, det_idx in associations.items():
+            track = self.tracks[track_id]
+            x_obs, y_obs = detections[det_idx]
+
+            if track.position_buffer:
+                prev_x, prev_y = track.position_buffer[-1]
+                dt_obs = now - track.last_seen
+                if 0.001 < dt_obs < 0.5:
+                    vx_meas = (x_obs - prev_x) / dt_obs
+                    vy_meas = (y_obs - prev_y) / dt_obs
+                    a = velocity_smoothing
+                    track.vx = a * vx_meas + (1.0 - a) * track.vx
+                    track.vy = a * vy_meas + (1.0 - a) * track.vy
+
+            track.x = x_obs
+            track.y = y_obs
+            track.last_seen = now
+            track.age = 0
+
+            track.position_buffer.append((x_obs, y_obs))
+            if len(track.position_buffer) > 20:
+                track.position_buffer.pop(0)
+            track.is_static = self.classifier.classify(track.position_buffer)
+
+        unassociated = [i for i in range(len(detections))
+                        if i not in associations.values()]
+        for det_idx in unassociated:
+            x, y = detections[det_idx]
+            new_track = self._initialize_track_cartesian(x, y)
+            self.tracks[new_track.id] = new_track
+
+        to_remove = [tid for tid, track in self.tracks.items()
+                     if track.age > self.max_age]
+        for tid in to_remove:
+            del self.tracks[tid]
+
+        return list(self.tracks.values())
+
+    def _initialize_track_cartesian(self, x: float, y: float) -> OpponentState:
+        track = OpponentState(
+            id=self.next_id,
+            s=0.0, vs=0.0, d=0.0, vd=0.0,
+            x=x, y=y,
+            state=np.zeros(4),
+            covariance=np.eye(4),
+            last_seen=time.time(),
+            age=0,
+            position_buffer=[(x, y)],
+            vx=0.0,
+            vy=0.0,
+        )
+        self.next_id += 1
+        return track
+
+    def _associate_detections_cartesian(
+        self,
+        detections: List[Tuple[float, float]],
+    ) -> dict:
+        if not self.tracks or not detections:
+            return {}
+
+        track_ids = list(self.tracks.keys())
+        cost_matrix = np.zeros((len(track_ids), len(detections)))
+        for i, track_id in enumerate(track_ids):
+            track = self.tracks[track_id]
+            for j, (x_det, y_det) in enumerate(detections):
+                dx = track.x - x_det
+                dy = track.y - y_det
+                cost_matrix[i, j] = np.sqrt(dx * dx + dy * dy)
+
+        associations = {}
+        for _ in range(min(len(track_ids), len(detections))):
+            if cost_matrix.size == 0:
+                break
+            min_idx = np.unravel_index(np.argmin(cost_matrix), cost_matrix.shape)
+            track_idx, det_idx = min_idx
+            if cost_matrix[track_idx, det_idx] < self.max_association_dist:
+                associations[track_ids[track_idx]] = det_idx
+                cost_matrix[track_idx, :] = np.inf
+                cost_matrix[:, det_idx] = np.inf
+            else:
+                break
+
+        return associations
+
     def get_dynamic_opponents(self) -> List[OpponentState]:
         return [track for track in self.tracks.values() 
                 if not track.is_static and track.age < 3]

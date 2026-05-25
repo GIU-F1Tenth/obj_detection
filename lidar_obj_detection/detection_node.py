@@ -30,6 +30,7 @@ class ObjectDetectionNode(Node):
                 ("use_boundary_filter", True),
                 ("use_adaptive_breakpoint", True),
                 ("use_frenet_filtering", False),
+                ("is_using_frenet_speed_tracking", False), # if false it will just use velocity tracking in Cartesian coordinates, if true it will use the Frenet converter. 
                 ("min_range", 0.2),
                 ("max_range", 10.0),
                 ("breakpoint_base_threshold", 0.3),
@@ -68,6 +69,7 @@ class ObjectDetectionNode(Node):
             "use_adaptive_breakpoint"
         ).value
         self.use_frenet_filtering = self.get_parameter("use_frenet_filtering").value
+        self.is_using_frenet_speed_tracking = self.get_parameter("is_using_frenet_speed_tracking").value
         self.min_range = self.get_parameter("min_range").value
         self.max_range = self.get_parameter("max_range").value
 
@@ -168,9 +170,9 @@ class ObjectDetectionNode(Node):
         self.object_centers_pub = self.create_publisher(
             MarkerArray, self.object_centers_topic, 10
         )
-        # self.velocity_marker_pub = self.create_publisher(
-        #     MarkerArray, self.object_velocities_topic, 10
-        # )
+        self.velocity_marker_pub = self.create_publisher(
+            MarkerArray, self.object_velocities_topic, 10
+        )
 
         self.get_logger().info("Object Detection Node initialized")
 
@@ -319,45 +321,44 @@ class ObjectDetectionNode(Node):
         if len(bounding_boxes) == 0:
             self.publish_markers([], [], self.map_frame)
             return
+        
+        if self.is_using_frenet_speed_tracking and self.frenet_converter.raceline_s is not None:
+            detections_frenet = []
+            current_time = time.time()
 
-        detections_frenet = []
-        current_time = time.time()
+            for bbox in bounding_boxes:
+                if self.frenet_converter.raceline_s is not None:
+                    try:
+                        s, d = self.frenet_converter.cartesian_to_frenet(
+                            bbox.center_x, bbox.center_y
+                        )
 
-        for bbox in bounding_boxes:
-            if self.frenet_converter.raceline_s is not None:
-                try:
-                    s, d = self.frenet_converter.cartesian_to_frenet(
-                        bbox.center_x, bbox.center_y
-                    )
+                        vs, vd = 0.0, 0.0
+                        det_key = f"{bbox.center_x:.2f}_{bbox.center_y:.2f}"
 
-                    vs, vd = 0.0, 0.0
-                    det_key = f"{bbox.center_x:.2f}_{bbox.center_y:.2f}"
+                        if det_key in self.previous_detections:
+                            prev_s, prev_d, prev_time = self.previous_detections[det_key]
+                            dt = current_time - prev_time
+                            if dt > 0.01 and dt < 0.5:
+                                vs = (s - prev_s) / dt
+                                vd = (d - prev_d) / dt
 
-                    if det_key in self.previous_detections:
-                        prev_s, prev_d, prev_time = self.previous_detections[det_key]
-                        dt = current_time - prev_time
-                        if dt > 0.01 and dt < 0.5:
-                            vs = (s - prev_s) / dt
-                            vd = (d - prev_d) / dt
+                        self.previous_detections[det_key] = (s, d, current_time)
 
-                    self.previous_detections[det_key] = (s, d, current_time)
+                        detections_frenet.append(
+                            (s, d, vs, vd, bbox.center_x, bbox.center_y)
+                        )
+                    except Exception as e:
+                        self.get_logger().warn(
+                            f"Failed to convert detection to Frenet: {e}",
+                            throttle_duration_sec=5.0,
+                        )
 
-                    detections_frenet.append(
-                        (s, d, vs, vd, bbox.center_x, bbox.center_y)
-                    )
-                except Exception as e:
-                    self.get_logger().warn(
-                        f"Failed to convert detection to Frenet: {e}",
-                        throttle_duration_sec=5.0,
-                    )
-
-        self.previous_detections = {
-            k: v
-            for k, v in self.previous_detections.items()
-            if current_time - v[2] < 1.0
-        }
-
-        if self.ego_position_updated or self.frenet_converter.raceline_s is None:
+            self.previous_detections = {
+                k: v
+                for k, v in self.previous_detections.items()
+                if current_time - v[2] < 1.0
+            }
             tracked_objects = self.tracker.update(
                 detections_frenet,
                 ego_s=self.ego_s,
@@ -366,6 +367,11 @@ class ObjectDetectionNode(Node):
                 frenet_converter=self.frenet_converter,
             )
         else:
+            detections_cartesian = [(bbox.center_x, bbox.center_y) for bbox in bounding_boxes]
+            tracked_objects = self.tracker.update_cartesian(
+                detections_cartesian
+            )
+        if not self.ego_position_updated:
             self.get_logger().warn(
                 "Skipping tracking update: ego position not yet initialized",
                 throttle_duration_sec=2.0,
@@ -432,13 +438,13 @@ class ObjectDetectionNode(Node):
             bbox_markers.markers.append(bbox_marker)
 
         for obj in tracked_objects:
-            if obj.age > 1:
-                continue
+            # if obj.age > 1: # commented out just to see the velocity for the opponent cleanly even when it is at rest.
+            #     continue
 
-            speed = np.sqrt(obj.vs**2 + obj.vd**2)
+            speed = np.sqrt(obj.vx**2 + obj.vy**2)
 
-            if speed < 0.1:
-                continue
+            # if speed < 0.1:
+            #     continue
 
             arrow_marker = Marker()
             arrow_marker.header.frame_id = frame_id
@@ -453,25 +459,21 @@ class ObjectDetectionNode(Node):
             start.y = float(obj.y)
             start.z = 0.0
 
-            if self.frenet_converter.raceline_s is not None:
-                try:
-                    abs_vx, abs_vy = self.frenet_converter.frenet_velocity_to_cartesian(
-                        obj.s, obj.d, obj.vs, obj.vd
-                    )
-                    end = Point()
-                    end.x = float(obj.x + abs_vx * 0.5)
-                    end.y = float(obj.y + abs_vy * 0.5)
-                    end.z = 0.0
-                except:
-                    end = Point()
-                    end.x = float(obj.x + 0.5)
-                    end.y = float(obj.y)
-                    end.z = 0.0
-            else:
-                end = Point()
-                end.x = float(obj.x + 0.5)
-                end.y = float(obj.y)
-                end.z = 0.0
+            # if self.frenet_converter.raceline_s is not None:
+            #     end = Point()
+            #     end.x = float(obj.x + obj.vx * 0.5)
+            #     end.y = float(obj.y + obj.vy * 0.5)
+            #     end.z = 0.0
+            # else:
+            #     end = Point()
+            #     end.x = float(obj.x + 0.5)
+            #     end.y = float(obj.y)
+            #     end.z = 0.0
+
+            end = Point()
+            end.x = float(obj.x + obj.vx * 0.5) # this 0,5 is a prediction for the next 0.5 seconds, it can be tuned based on the expected speed of the opponents and the desired lookahead time
+            end.y = float(obj.y + obj.vy * 0.5)
+            end.z = 0.0
 
             arrow_marker.points = [start, end]
 
@@ -547,7 +549,7 @@ class ObjectDetectionNode(Node):
         self.marker_pub.publish(cluster_markers)
         self.bbox_pub.publish(bbox_markers)
         self.object_centers_pub.publish(centers)
-        # self.velocity_marker_pub.publish(velocity_markers)
+        self.velocity_marker_pub.publish(velocity_markers)
 
 
 def main(args=None):

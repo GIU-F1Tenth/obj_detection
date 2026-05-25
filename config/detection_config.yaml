@@ -4,7 +4,8 @@ object_detection:
     use_boundary_filter: true                   # Enables occupancy-map boundary rejection; true removes wall/edge hits more aggressively, false keeps more near-boundary detections.
     use_adaptive_breakpoint: true               # Enables adaptive breakpoint clustering; true splits objects by range-aware gaps, false treats the whole scan as one cluster.
     use_frenet_filtering: true                  # Enables track-boundary filtering in Frenet space; true rejects detections near/outside track edges, false keeps them.
-    
+    is_using_frenet_speed_tracking: false       # true uses Frenet EKF tracker (requires raceline), false uses cartesian finite-difference tracker (simpler, no raceline needed).
+
     min_range: 0.2                              # Minimum accepted lidar range in meters; increasing it drops close objects, decreasing it keeps more near-field returns and noise.
     max_range: 10.0                             # Maximum accepted lidar range in meters; increasing it keeps farther objects and more distant clutter, decreasing it limits detections to nearer targets.
     
@@ -29,6 +30,9 @@ object_detection:
     tracker_max_distance: 2.0                   # Maximum distance for matching a detection to an existing track; increasing it links detections more easily, decreasing it creates new tracks more often.
     tracker_max_age: 5                          # Number of missed updates before a track is dropped; increasing it keeps stale tracks longer, decreasing it removes lost tracks faster.
     track_length: 100.0                         # Track length used for Frenet wrap-around in tracking; increasing or decreasing it changes where longitudinal positions wrap on looped tracks.
+
+    lidar_x_offset: 0.275                       # Forward offset of the laser frame from base_link in meters; used to lift cluster points from laser frame into map frame.
+    map_frame: 'map'                            # TF frame the detection markers are published in; must match the frame the OccupancyGrid and raceline are published in.
 
     scan_topic: '/scan'                         
     map_topic: '/map'                           
