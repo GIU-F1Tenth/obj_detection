@@ -2,6 +2,7 @@
 
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid, Path, Odometry
 from visualization_msgs.msg import Marker, MarkerArray
@@ -48,6 +49,8 @@ class ObjectDetectionNode(Node):
                 ("tracker_max_distance", 2.0),
                 ("tracker_max_age", 5),
                 ("track_length", 100.0),
+                ("lidar_x_offset", 0.275),
+                ("map_frame", "map"),
                 ("scan_topic", "/scan"),
                 ("map_topic", "/map"),
                 ("raceline_topic", "/pp_path"),
@@ -104,8 +107,15 @@ class ObjectDetectionNode(Node):
         self.ego_vs = 0.0
         self.ego_vx = 0.0
         self.ego_vy = 0.0
+        self.ego_x = 0.0
+        self.ego_y = 0.0
+        self.ego_yaw = 0.0
+        self.ego_pose_received = False
         self.ego_position_updated = False
         self.is_circular_track = True
+
+        self.lidar_x_offset = self.get_parameter("lidar_x_offset").value
+        self.map_frame = self.get_parameter("map_frame").value
 
         self.tracker = OpponentTracker(
             dt=self.get_parameter("tracker_dt").value,
@@ -133,8 +143,14 @@ class ObjectDetectionNode(Node):
             LaserScan, self.scan_topic, self.scan_callback, 10
         )
 
+        map_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
         self.map_sub = self.create_subscription(
-            OccupancyGrid, self.map_topic, self.map_callback, 10
+            OccupancyGrid, self.map_topic, self.map_callback, map_qos
         )
 
         self.raceline_sub = self.create_subscription(
@@ -159,16 +175,25 @@ class ObjectDetectionNode(Node):
         self.get_logger().info("Object Detection Node initialized")
 
     def map_callback(self, msg: OccupancyGrid):
+        self.get_logger().error("map_callback triggered with new occupancy grid")
         if self.use_boundary_filter:
             self.boundary_filter.update_map(msg)
-            self.get_logger().info("Map updated for boundary filtering")
+            self.get_logger().error("Map updated for boundary filtering")
 
     def ego_odom_callback(self, msg: Odometry):
         position = msg.pose.pose.position
         velocity = msg.twist.twist.linear
+        q = msg.pose.pose.orientation
 
         self.ego_vx = velocity.x
         self.ego_vy = velocity.y
+        self.ego_x = position.x
+        self.ego_y = position.y
+        self.ego_yaw = np.arctan2(
+            2.0 * (q.w * q.z + q.x * q.y),
+            1.0 - 2.0 * (q.y * q.y + q.z * q.z),
+        )
+        self.ego_pose_received = True
 
         if self.frenet_converter.raceline_s is not None:
             try:
@@ -229,7 +254,24 @@ class ObjectDetectionNode(Node):
                 f"Raceline updated with {len(msg.poses)} points, total length: {s:.2f}m"
             )
 
+    def _laser_to_map(self, points: np.ndarray) -> np.ndarray:
+        if len(points) == 0:
+            return points
+        shifted_x = points[:, 0] + self.lidar_x_offset
+        shifted_y = points[:, 1]
+        cos_y, sin_y = np.cos(self.ego_yaw), np.sin(self.ego_yaw)
+        map_x = self.ego_x + cos_y * shifted_x - sin_y * shifted_y
+        map_y = self.ego_y + sin_y * shifted_x + cos_y * shifted_y
+        return np.column_stack((map_x, map_y))
+
     def scan_callback(self, msg: LaserScan):
+        if not self.ego_pose_received:
+            self.get_logger().warn(
+                "Skipping scan: ego pose not yet received, cannot transform to map frame",
+                throttle_duration_sec=2.0,
+            )
+            return
+
         ranges = np.array(msg.ranges)
 
         if self.use_ekf_filter:
@@ -243,7 +285,7 @@ class ObjectDetectionNode(Node):
         angles = angles[valid_indices]
 
         if len(ranges) == 0:
-            self.publish_markers([], [], msg.header.frame_id)
+            self.publish_markers([], [], self.map_frame)
             return
 
         if self.use_adaptive_breakpoint:
@@ -254,6 +296,8 @@ class ObjectDetectionNode(Node):
             points = lidar_to_cartesian(ranges, angles)
             points = filter_by_range(points, self.min_range, self.max_range)
             clusters = [points]
+
+        clusters = [self._laser_to_map(c) for c in clusters]
 
         if self.use_boundary_filter:
             filtered_clusters = []
@@ -267,13 +311,13 @@ class ObjectDetectionNode(Node):
             clusters = self.frenet_boundary_filter.filter_clusters(clusters)
 
         if len(clusters) == 0:
-            self.publish_markers([], [], msg.header.frame_id)
+            self.publish_markers([], [], self.map_frame)
             return
 
         bounding_boxes = self.rectangle_fitter.fit_and_filter(clusters)
 
         if len(bounding_boxes) == 0:
-            self.publish_markers([], [], msg.header.frame_id)
+            self.publish_markers([], [], self.map_frame)
             return
 
         detections_frenet = []
@@ -328,7 +372,7 @@ class ObjectDetectionNode(Node):
             )
             tracked_objects = []
 
-        self.publish_markers(bounding_boxes, tracked_objects, msg.header.frame_id)
+        self.publish_markers(bounding_boxes, tracked_objects, self.map_frame)
 
     def publish_markers(self, bounding_boxes, tracked_objects, frame_id):
         cluster_markers = MarkerArray()
