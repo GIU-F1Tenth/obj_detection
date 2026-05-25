@@ -2,7 +2,7 @@
 
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid, Path, Odometry
 from visualization_msgs.msg import Marker, MarkerArray
@@ -158,7 +158,7 @@ class ObjectDetectionNode(Node):
         )
 
         self.ego_odom_sub = self.create_subscription(
-            Odometry, self.ego_odom_topic, self.ego_odom_callback, 10
+            Odometry, self.ego_odom_topic, self.ego_odom_callback, qos_profile_sensor_data
         )
 
         self.marker_pub = self.create_publisher(
@@ -382,8 +382,11 @@ class ObjectDetectionNode(Node):
         delete_marker = Marker()
         delete_marker.action = Marker.DELETEALL
         cluster_markers.markers.append(delete_marker)
+        centers = MarkerArray()
+    
         bbox_markers.markers.append(Marker(action=Marker.DELETEALL))
         velocity_markers.markers.append(Marker(action=Marker.DELETEALL))
+        centers.markers.append(Marker(action=Marker.DELETEALL))
 
         for i, bbox in enumerate(bounding_boxes):
             points_marker = Marker()
@@ -430,6 +433,30 @@ class ObjectDetectionNode(Node):
             bbox_marker.color.a = 1.0
 
             bbox_markers.markers.append(bbox_marker)
+            
+            center_marker = Marker()
+            center_marker.header.frame_id = frame_id
+            center_marker.header.stamp = self.get_clock().now().to_msg()
+            center_marker.ns = "object_centers"
+            center_marker.id = i
+            center_marker.type = Marker.SPHERE
+            center_marker.action = Marker.ADD
+
+            center_marker.pose.position.x = sum([corner[0] for corner in corners]) / 4.0
+            center_marker.pose.position.y = sum([corner[1] for corner in corners]) / 4.0
+            center_marker.pose.position.z = 0.1
+
+            center_marker.scale.x = 0.2
+            center_marker.scale.y = 0.2
+            center_marker.scale.z = 0.2
+
+            
+            center_marker.color.r = 0.0
+            center_marker.color.g = 0.0
+            center_marker.color.b = 1.0
+            center_marker.color.a = 1.0
+
+            centers.markers.append(center_marker)    
 
         for obj in tracked_objects:
             if obj.age > 1:
@@ -512,38 +539,7 @@ class ObjectDetectionNode(Node):
 
             velocity_markers.markers.append(arrow_marker)
             velocity_markers.markers.append(text_marker)
-
-        centers = MarkerArray()
-
-        for obj in tracked_objects:
-            center_marker = Marker()
-            center_marker.header.frame_id = frame_id
-            center_marker.header.stamp = self.get_clock().now().to_msg()
-            center_marker.ns = "object_centers"
-            center_marker.id = obj.id
-            center_marker.type = Marker.SPHERE
-            center_marker.action = Marker.ADD
-
-            center_marker.pose.position.x = float(obj.x)
-            center_marker.pose.position.y = float(obj.y)
-            center_marker.pose.position.z = 0.1
-
-            center_marker.scale.x = 0.2
-            center_marker.scale.y = 0.2
-            center_marker.scale.z = 0.2
-
-            if obj.is_static:
-                center_marker.color.r = 1.0
-                center_marker.color.g = 1.0
-                center_marker.color.b = 0.0
-            else:
-                center_marker.color.r = 0.0
-                center_marker.color.g = 0.0
-                center_marker.color.b = 1.0
-            center_marker.color.a = 1.0
-
-            centers.markers.append(center_marker)
-
+        
         self.marker_pub.publish(cluster_markers)
         self.bbox_pub.publish(bbox_markers)
         self.object_centers_pub.publish(centers)
